@@ -1,0 +1,30 @@
+# All v1 modules. Optical flow stays off until M3.
+input:
+  width: 640
+  height: 480
+  flip: true
+
+modules:
+  motion:
+    enabled: true
+    method: mog2
+    min_area: 500
+    zones: {}
+  optical_flow:
+    enabled: false
+    mode: sparse
+  hands:
+    enabled: true
+    max_hands: 2
+    min_detection_confidence: 0.5
+    gestures:
+      rules: true
+      builtin_recognizer: true
+      custom_classifier: false
+      dynamic: false
+
+output:
+  overlay: true
+  show_fps: true
+  event_log: logs/events.jsonl
+  record: false
