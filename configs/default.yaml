@@ -2,6 +2,9 @@
 input:
   width: 640
   height: 480
+  # Camera name (list them with `system_profiler SPCameraDataType`) or index.
+  # A name keeps the iPhone's Continuity Camera from being picked by mistake.
+  camera: FaceTime HD
   flip: true
 
 modules:

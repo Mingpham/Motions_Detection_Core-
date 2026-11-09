@@ -329,8 +329,8 @@ All tools are free and open source.
 
 | Milestone | Deliverable | Status |
 |---|---|---|
-| **M0** | Repo setup, environment, CI & security checks | ⏳ |
-| **M1** | Capture pipeline (webcam + video) with FPS counter | ⏳ |
+| **M0** | Repo setup, environment, CI & security checks | ✅ |
+| **M1** | Capture pipeline (webcam + video) with FPS counter | 🟡 |
 | **M2** | Frame differencing → background subtraction → zones & events | ⏳ |
 | **M3** | Optical flow & motion direction | ⏳ |
 | **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ⏳ |
@@ -343,7 +343,7 @@ All tools are free and open source.
 
 ## 🚀 Getting Started
 
-> Commands below describe the intended workflow and will work once milestones M0–M1 are complete.
+> The capture pipeline works (M1). Motion and hand modules arrive in M2 and M4; until then the window shows the prepared camera image with an FPS counter.
 
 ### Prerequisites
 
@@ -367,8 +367,8 @@ uv sync
 # 4. Download MediaPipe models
 uv run python scripts/download_models.py
 
-# 5. Run with the default config (webcam 0)
-uv run movecore --config configs/default.yaml --source 0
+# 5. Run with the default config (the camera named in input.camera); q or Esc quits
+uv run movecore
 
 # Or run on a video file
 uv run movecore --config configs/motion_only.yaml --source data/clips/sample.mp4

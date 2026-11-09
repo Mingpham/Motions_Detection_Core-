@@ -49,7 +49,17 @@ def _validate_input(section: Any) -> dict[str, Any]:
         # bool is a subclass of int, so `width: true` would otherwise pass.
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise ConfigError(f"'input.{key}' must be a positive integer, got {value!r}")
+    if "camera" in section and not _is_camera(section["camera"]):
+        raise ConfigError("'input.camera' must be a camera name or a non-negative index")
+    if not isinstance(section.get("flip", False), bool):
+        raise ConfigError("'input.flip' must be true or false")
     return section
+
+
+def _is_camera(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _validate_modules(section: Any) -> dict[str, dict[str, Any]]:

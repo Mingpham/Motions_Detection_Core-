@@ -2,7 +2,7 @@
 
 > This file packs the full planning conversation for the **MoveCore** project so Claude Code can continue the work locally. Put it in the repo root as `CLAUDE.md` (Claude Code reads it automatically at the start of each session).
 >
-> Last updated: 2026-11-06
+> Last updated: 2026-11-09
 
 ---
 
@@ -12,6 +12,7 @@
 - **Goal of the project:** *learning* how computer vision works by building a camera-based movement detection core. Explaining *why* matters as much as working code.
 - **Working style to follow:**
   - Go milestone by milestone; finish, test and push one before starting the next.
+  - After each changes and updates, do a overall check in term of: integrity, code smell, syntax errors, vulnerabilities, false codes,... to see if the changes actually fit the current code.
   - Explain new CV concepts briefly when introducing them (what the algorithm does, why the parameters matter).
   - Prefer small, readable modules over clever code. Add tests for every module.
   - Keep everything free and open source. Paid plans only after the project is finished and meets all requirements.
@@ -239,16 +240,18 @@ Motions_Detection_Core-/
 │   └── benchmark.py                   # M6
 ├── src/movecore/
 │   ├── __init__.py                    # __version__ = "0.1.0"
-│   ├── cli.py                         # ✅ --config, --source, --version (prints config for now)
+│   ├── app.py                         # ✅ run loop: source → preprocess → pipeline → display
+│   ├── cli.py                         # ✅ --config, --source, --loop, --headless, --max-frames, --version
 │   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py
-│   ├── capture/                       # M1: camera.py, video_file.py
-│   ├── preprocess/                    # M1: resize, flip, color, blur
+│   ├── capture/                       # ✅ source.py, camera.py (by index or name), video_file.py, selection.py
+│   ├── preprocess/                    # ✅ transforms.py: crop-and-resize, mirror (color/blur added when needed)
 │   ├── motion/                        # M2–M3: frame_diff, background_sub, optical_flow, morphology, zones
 │   ├── hands/                         # M4–M6: landmarker, features, gesture_rules, gesture_recognizer, classifier, dynamic
-│   └── output/                        # M1+: overlay, event_logger, recorder
+│   └── output/                        # ✅ overlay.py (FPS, labels), display.py · later: event_logger, recorder
 ├── tests/
-│   ├── unit/                          # ✅ test_config, test_pipeline, test_cli, test_dependencies (31 tests)
-│   ├── integration/                   # pipeline on recorded clips
+│   ├── conftest.py                    # make_video fixture: tiny MJPG clips generated per test
+│   ├── unit/                          # ✅ config, pipeline, cli, dependencies, camera, video_file, selection, preprocess, overlay, display, app
+│   ├── integration/                   # ✅ test_run_video.py: whole app headless on a generated clip (91 tests total)
 │   └── fixtures/                      # tiny test images/clips
 └── .github/
     ├── workflows/ci.yml               # ubuntu: apt libgl1/libglib2.0-0, setup-uv, uv sync --locked, ruff check, ruff format --check, pytest
@@ -259,7 +262,7 @@ Motions_Detection_Core-/
 ### Current config shape (`configs/default.yaml`)
 
 ```yaml
-input: {width: 640, height: 480, flip: true}
+input: {width: 640, height: 480, camera: FaceTime HD, flip: true}
 modules:
   motion: {enabled: true, method: mog2, min_area: 500, zones: {}}
   optical_flow: {enabled: false, mode: sparse}
@@ -286,8 +289,8 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 | Milestone | Deliverable | Status |
 |---|---|---|
 | Planning | Tool selection, stack, scope, README | ✅ Done |
-| **M0** | Repo setup, environment, CI & security checks | 🟡 Scaffold rebuilt on the Mac (the sandbox copy was never pushed) and verified: native arm64, 31 tests pass, ruff clean, pip-audit clean, pre-commit passes, models download and run. **Pending:** commit + push, CI green, enable Dependabot alerts, mark M0 ✅ in README |
-| M1 | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | ⏳ Next |
+| **M0** | Repo setup, environment, CI & security checks | ✅ Done — pushed as `0eb3670`, CI + Security green. Check Dependabot alerts are enabled (Settings → Code security) |
+| **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | 🟡 Code, tests and docs done (91 tests). **Pending:** live camera check by Ming, commit + push, CI green |
 | M2 | Frame differencing → background subtraction → morphology/contours → zones & events | ⏳ |
 | M3 | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | ⏳ |
 | M4 | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | ⏳ |
@@ -295,23 +298,21 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 | M6 | Dynamic swipe gestures, benchmarks (FPS/RAM), documentation, paper | ⏳ |
 | v2 / v3 | Body pose / face & expression | 🔮 |
 
-### Remaining M0 steps (run on the Mac)
+### M1 summary
+- **Sources:** `open_source()` takes a camera index (`0`), a camera name (`FaceTime HD`) or a video path. With no `--source`, it uses `input.camera` from the config. Cameras retry up to 50 empty reads while starting. Video timestamps follow the file's own frame rate.
+- **Camera by name:** OpenCV numbers macOS cameras by sorted unique ID, and Ming's iPhone (Continuity Camera, kept on deliberately) sorts first. Names are resolved via `system_profiler` (ADR 0003).
+- **Preprocess:** center-crop to the target aspect ratio, then resize (`INTER_AREA` when shrinking), then optionally mirror.
+- **Display:** `q`, `Esc` or the red close button quits. On macOS, `getWindowProperty` raises once the window is gone, which is handled as closed.
+- **Modules:** `app.MODULES` maps config names to classes. Enabled names that aren't registered yet are reported and skipped. M2 registers `motion` there.
+- **Baseline:** capture plus preprocess runs at ~345 FPS on a 1280×720 video (headless).
+- **Run:** `uv run movecore`, `uv run movecore --source clip.mp4 --loop`, or `uv run movecore --headless --max-frames 300` for a quick benchmark.
 
+### M1 remaining
 ```bash
-git commit -m "chore: M0 project scaffold, CI and security checks"
+uv run movecore          # window shows the Mac camera; q or Esc quits
+git add . && git commit -m "feat: M1 capture pipeline with camera, video, preprocessing and display"
 git push
 ```
-Then: GitHub → Actions (CI + Security green), Settings → Code security → enable Dependabot alerts. Mark M0 ✅ in README.
-
-### M1 plan (next)
-- `capture/camera.py`: `CameraSource(index)` — `cv2.VideoCapture`, set width/height, yield frames, clear error if camera can't open (hint: macOS camera permission).
-- `capture/video_file.py`: `VideoFileSource(path)`, optional loop, end-of-stream handling.
-- A `open_source(source: str)` helper: digit → camera, otherwise file path (validate it exists).
-- `preprocess/`: resize to config size, optional horizontal flip.
-- `output/overlay.py`: FPS counter (smoothed), text helpers; `cv2.imshow` window, `q`/`Esc` to quit.
-- Wire into `cli.py` and `Pipeline` (frames iterable from the source; display as an output step).
-- Tests: video source on a tiny generated clip in `tests/fixtures` (generate with NumPy + `cv2.VideoWriter` in a fixture), source selection logic. No camera in CI.
-- Docs: `docs/fundamentals/01-images-and-video.md` (pixels, BGR, frames, FPS).
 
 ---
 
@@ -382,7 +383,8 @@ Pose estimation (33 body keypoints: fall detection, exercise), action recognitio
 - ⚠️ Use MediaPipe **Tasks API** (`mediapipe.tasks.python.vision`), never `mp.solutions`.
 - ⚠️ BGR (OpenCV) vs RGB (MediaPipe).
 - ⚠️ MediaPipe VIDEO mode needs strictly increasing timestamps.
-- ⚠️ macOS camera permission for Terminal/VS Code.
+- ⚠️ macOS camera permission for Terminal/VS Code. It belongs to the app that launches the program, so Claude Code's shell can't open the camera; Ming runs live camera checks.
+- ⚠️ Don't select cameras by bare index on this Mac: the iPhone (Continuity Camera) takes index 0 when nearby. Use `input.camera: FaceTime HD`.
 - ⚠️ `cv2.imshow` must run on the main thread on macOS; call `cv2.waitKey(1)` each frame.
 - ⚠️ 8GB RAM: keep 640×480, avoid loading unused models, release `VideoCapture` and close landmarkers.
 - ⚠️ The upstream `gitleaks-system` pre-commit hook lacks `pass_filenames: false`; keep the override in `.pre-commit-config.yaml` or every commit fails.

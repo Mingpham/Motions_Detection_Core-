@@ -5,13 +5,29 @@ import sys
 from collections.abc import Sequence
 
 from movecore import __version__
+from movecore.app import run
+from movecore.capture import SourceError
 from movecore.core.config import ConfigError, load_config
 
 
+def positive_int(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {text}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="movecore", description=__doc__)
+    parser = argparse.ArgumentParser(prog="movecore", description="Movement detection core.")
     parser.add_argument("--config", default="configs/default.yaml", help="path to a YAML config")
-    parser.add_argument("--source", default="0", help="camera index or video file path")
+    parser.add_argument(
+        "--source",
+        help='camera index (0), camera name ("FaceTime HD") or video file; '
+        "defaults to input.camera in the config",
+    )
+    parser.add_argument("--loop", action="store_true", help="restart a video file when it ends")
+    parser.add_argument("--headless", action="store_true", help="run without opening a window")
+    parser.add_argument("--max-frames", type=positive_int, help="stop after this many frames")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -25,11 +41,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    # Capture and display arrive in M1; until then, show what would run.
     print(f"Config:  {args.config}")
-    print(f"Source:  {args.source}")
-    print(f"Input:   {config.input['width']}x{config.input['height']}")
     print(f"Modules: {', '.join(config.enabled_modules()) or 'none'}")
+    try:
+        summary = run(
+            config,
+            args.source,
+            headless=args.headless,
+            loop=args.loop,
+            max_frames=args.max_frames,
+        )
+    except SourceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("Stopped.")
+        return 130
+
+    print(
+        f"Done:    {summary.frames} frames in {summary.seconds:.1f} s "
+        f"({summary.average_fps:.1f} FPS average)"
+    )
     return 0
 
 

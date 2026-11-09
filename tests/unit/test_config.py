@@ -75,3 +75,22 @@ def test_output_must_be_a_mapping(tmp_path):
     text = VALID.replace("output: {overlay: true}", "output: 1")
     with pytest.raises(ConfigError, match="'output'"):
         load_config(write_config(tmp_path, text))
+
+
+@pytest.mark.parametrize("camera", ["FaceTime HD", 0, 2])
+def test_valid_camera_settings(tmp_path, camera):
+    text = VALID.replace("height: 480}", f"height: 480, camera: {camera}}}")
+    assert load_config(write_config(tmp_path, text)).input["camera"] == camera
+
+
+@pytest.mark.parametrize("camera", ['""', -1, "true", "[0]"])
+def test_invalid_camera_settings(tmp_path, camera):
+    text = VALID.replace("height: 480}", f"height: 480, camera: {camera}}}")
+    with pytest.raises(ConfigError, match="input.camera"):
+        load_config(write_config(tmp_path, text))
+
+
+def test_flip_must_be_a_boolean(tmp_path):
+    text = VALID.replace("height: 480}", "height: 480, flip: yes please}")
+    with pytest.raises(ConfigError, match="input.flip"):
+        load_config(write_config(tmp_path, text))

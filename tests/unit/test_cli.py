@@ -16,13 +16,18 @@ def test_version_flag(capsys):
     assert __version__ in capsys.readouterr().out
 
 
-def test_prints_config_summary(capsys):
-    assert main(["--config", str(DEFAULT_CONFIG), "--source", "clip.mp4"]) == 0
+def test_missing_source_fails_cleanly(capsys):
+    assert main(["--config", str(DEFAULT_CONFIG), "--source", "missing.mp4", "--headless"]) == 1
 
-    out = capsys.readouterr().out
-    assert "clip.mp4" in out
-    assert "640x480" in out
-    assert "motion, hands" in out
+    captured = capsys.readouterr()
+    assert "motion, hands" in captured.out
+    assert "Video file not found" in captured.err
+
+
+def test_max_frames_must_be_positive():
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--max-frames", "0"])
+    assert exit_info.value.code == 2
 
 
 def test_missing_config_fails_cleanly(tmp_path, capsys):
