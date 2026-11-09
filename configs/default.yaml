@@ -16,7 +16,7 @@ modules:
     history: 500          # mog2/knn: how many frames the background model remembers
     var_threshold: 16     # mog2 only: squared color distance (16 = 4 std devs) before a pixel is foreground
     detect_shadows: true  # mog2/knn: mark shadows separately so they can be ignored
-    background_ratio: 0.9 # mog2 only: lower keeps still objects visible longer, flags flicker more
+    background_ratio: 0.7 # mog2 only: lower keeps still objects visible longer, flags flicker more
     kernel_size: 5        # morphology kernel (odd): bigger removes more specks, merges more
     min_area: 500         # ignore shapes smaller than this many pixels (also the zone trigger)
     warmup_frames: 30     # no events while the model learns the scene (~1 s)
