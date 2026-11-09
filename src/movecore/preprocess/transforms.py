@@ -1,4 +1,4 @@
-"""Resize and flip frames into the shape every module expects."""
+"""Resize, flip and simplify frames before analysis."""
 
 import cv2
 import numpy as np
@@ -38,3 +38,15 @@ def mirror(frame: np.ndarray) -> np.ndarray:
 def preprocess(frame: np.ndarray, width: int, height: int, flip: bool) -> np.ndarray:
     frame = fit_to_size(frame, width, height)
     return mirror(frame) if flip else frame
+
+
+def to_gray(frame: np.ndarray) -> np.ndarray:
+    """One brightness channel instead of three: a third of the work, same shapes."""
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
+def blur(frame: np.ndarray, kernel_size: int) -> np.ndarray:
+    """Gaussian blur, which smooths out sensor noise. ``kernel_size`` must be odd; 1 means off."""
+    if kernel_size <= 1:
+        return frame
+    return cv2.GaussianBlur(frame, (kernel_size, kernel_size), 0)

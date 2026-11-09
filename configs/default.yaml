@@ -10,8 +10,22 @@ input:
 modules:
   motion:
     enabled: true
-    method: mog2
-    min_area: 500
+    method: mog2          # diff (frame differencing) | mog2 | knn (background subtraction)
+    blur: 21              # Gaussian blur size (odd) before comparing; smooths sensor noise
+    threshold: 25         # diff only: brightness change (0-255) that counts as motion
+    history: 500          # mog2/knn: how many frames the background model remembers
+    var_threshold: 16     # mog2 only: squared color distance (16 = 4 std devs) before a pixel is foreground
+    detect_shadows: true  # mog2/knn: mark shadows separately so they can be ignored
+    background_ratio: 0.9 # mog2 only: lower keeps still objects visible longer, flags flicker more
+    kernel_size: 5        # morphology kernel (odd): bigger removes more specks, merges more
+    min_area: 500         # ignore shapes smaller than this many pixels (also the zone trigger)
+    warmup_frames: 30     # no events while the model learns the scene (~1 s)
+    start_frames: 2       # frames of motion in a row before motion.start / zone.enter
+    stop_frames: 15       # frames of stillness in a row before motion.stop / zone.leave
+    # Zones are [x, y, width, height] as fractions of the (mirrored) frame:
+    # zones:
+    #   left_half: [0.0, 0.0, 0.5, 1.0]
+    #   top_right: [0.5, 0.0, 0.5, 0.5]
     zones: {}
   optical_flow:
     enabled: false

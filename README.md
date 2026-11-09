@@ -330,8 +330,8 @@ All tools are free and open source.
 | Milestone | Deliverable | Status |
 |---|---|---|
 | **M0** | Repo setup, environment, CI & security checks | ✅ |
-| **M1** | Capture pipeline (webcam + video) with FPS counter | 🟡 |
-| **M2** | Frame differencing → background subtraction → zones & events | ⏳ |
+| **M1** | Capture pipeline (webcam + video) with FPS counter | ✅ |
+| **M2** | Frame differencing → background subtraction → zones & events | 🟡 |
 | **M3** | Optical flow & motion direction | ⏳ |
 | **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ⏳ |
 | **M5** | Gesture recorder + custom classifier | ⏳ |
@@ -343,7 +343,7 @@ All tools are free and open source.
 
 ## 🚀 Getting Started
 
-> The capture pipeline works (M1). Motion and hand modules arrive in M2 and M4; until then the window shows the prepared camera image with an FPS counter.
+> Motion detection works (M2): moving regions get boxes, and events print in the terminal and go to `logs/events.jsonl`. Hand tracking arrives in M4.
 
 ### Prerequisites
 
@@ -369,6 +369,9 @@ uv run python scripts/download_models.py
 
 # 5. Run with the default config (the camera named in input.camera); q or Esc quits
 uv run movecore
+
+# See what the motion detector sees: the mask appears beside the image
+uv run movecore --show-mask
 
 # Or run on a video file
 uv run movecore --config configs/motion_only.yaml --source data/clips/sample.mp4

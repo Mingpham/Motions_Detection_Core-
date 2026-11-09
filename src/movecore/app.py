@@ -1,24 +1,33 @@
 """The run loop: read frames, prepare them, run the modules, show the result."""
 
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
 
 from movecore.capture import open_source
 from movecore.core.config import AppConfig
-from movecore.core.module import Module
+from movecore.core.events import ALL_EVENTS, Event, EventBus
+from movecore.core.module import FrameContext, Module
 from movecore.core.pipeline import Pipeline
-from movecore.output import Display, FpsCounter, draw_label
+from movecore.motion import MotionModule
+from movecore.output import Display, EventLogger, FpsCounter, draw_label, side_by_side
 from movecore.preprocess import preprocess
 
+ModuleFactory = Callable[[dict[str, Any]], Module]
+
 # Module name in the config -> class. Each milestone registers its modules here.
-MODULES: dict[str, type[Module]] = {}
+MODULES: dict[str, ModuleFactory] = {"motion": MotionModule}
 
 
 @dataclass(frozen=True)
 class RunSummary:
     frames: int
     seconds: float
+    events: int = 0
 
     @property
     def average_fps(self) -> float:
@@ -28,9 +37,19 @@ class RunSummary:
 def build_modules(config: AppConfig) -> tuple[list[Module], list[str]]:
     """Create the enabled modules that exist so far; also return the names still missing."""
     enabled = config.enabled_modules()
-    modules = [MODULES[name]() for name in enabled if name in MODULES]
+    modules = [MODULES[name](config.modules[name]) for name in enabled if name in MODULES]
     missing = [name for name in enabled if name not in MODULES]
     return modules, missing
+
+
+def print_event(event: Event) -> None:
+    details = " ".join(f"{key}={value}" for key, value in event.payload.items() if key != "boxes")
+    print(f"[{event.timestamp_ms / 1000:8.2f}s] {event.type:<13} {details}".rstrip())
+
+
+def find_mask(ctx: FrameContext) -> np.ndarray | None:
+    """The first mask any module produced for this frame, or None."""
+    return next((r.data["mask"] for r in ctx.results.values() if "mask" in r.data), None)
 
 
 def run(
@@ -40,25 +59,38 @@ def run(
     headless: bool = False,
     loop: bool = False,
     max_frames: int | None = None,
+    show_mask: bool = False,
 ) -> RunSummary:
     width, height = config.input["width"], config.input["height"]
     flip = config.input.get("flip", False)
-    show_fps = config.output.get("overlay", True) and config.output.get("show_fps", True)
+    overlay = config.output.get("overlay", True)
+    show_fps = overlay and config.output.get("show_fps", True)
+    event_log = config.output.get("event_log")
 
     modules, missing = build_modules(config)
     if missing:
         print(f"Not built yet, skipped: {', '.join(missing)}")
 
+    bus = EventBus()
+    events: list[Event] = []
+    bus.subscribe(ALL_EVENTS, events.append)
+    bus.subscribe(ALL_EVENTS, print_event)
+
     fps_counter = FpsCounter()
     frames = 0
     start = time.perf_counter()
-    # Entered left to right, so the window only opens once the source has opened.
+    # Entered left to right, so the log and window only open once the source has opened.
     with (
         open_source(source, config.input, loop=loop) as frame_source,
-        Pipeline(modules) as pipeline,
+        EventLogger(event_log) if event_log else nullcontext() as logger,
+        Pipeline(modules, bus) as pipeline,
         nullcontext() if headless else Display() as display,
     ):
         print(f"Source:  {frame_source.description}")
+        if logger is not None:
+            print(f"Events:  {logger.path}")
+            bus.subscribe(ALL_EVENTS, logger.write)
+
         for index, (raw, timestamp_ms) in enumerate(frame_source.frames()):
             if index == 0:
                 raw_height, raw_width = raw.shape[:2]
@@ -71,10 +103,14 @@ def run(
 
             if display is not None:
                 view = ctx.frame.copy()
+                if overlay:
+                    for module in modules:
+                        module.draw(view, ctx.results[module.name])
                 if show_fps:
                     draw_label(view, f"FPS {fps:.1f}")
-                if not display.show(view):
+                mask = find_mask(ctx) if show_mask else None
+                if not display.show(view if mask is None else side_by_side(view, mask)):
                     break
             if max_frames is not None and frames >= max_frames:
                 break
-    return RunSummary(frames, time.perf_counter() - start)
+    return RunSummary(frames, time.perf_counter() - start, len(events))

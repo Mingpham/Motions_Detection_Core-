@@ -94,3 +94,17 @@ def test_flip_must_be_a_boolean(tmp_path):
     text = VALID.replace("height: 480}", "height: 480, flip: yes please}")
     with pytest.raises(ConfigError, match="input.flip"):
         load_config(write_config(tmp_path, text))
+
+
+@pytest.mark.parametrize("event_log", ["logs/events.jsonl", None])
+def test_valid_event_log(tmp_path, event_log):
+    value = "null" if event_log is None else event_log
+    text = VALID.replace("output: {overlay: true}", f"output: {{event_log: {value}}}")
+    assert load_config(write_config(tmp_path, text)).output["event_log"] == event_log
+
+
+@pytest.mark.parametrize("event_log", ['""', "5", "[a]"])
+def test_invalid_event_log(tmp_path, event_log):
+    text = VALID.replace("output: {overlay: true}", f"output: {{event_log: {event_log}}}")
+    with pytest.raises(ConfigError, match="output.event_log"):
+        load_config(write_config(tmp_path, text))

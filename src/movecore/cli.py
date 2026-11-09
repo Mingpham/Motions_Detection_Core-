@@ -28,6 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--loop", action="store_true", help="restart a video file when it ends")
     parser.add_argument("--headless", action="store_true", help="run without opening a window")
     parser.add_argument("--max-frames", type=positive_int, help="stop after this many frames")
+    parser.add_argument(
+        "--show-mask", action="store_true", help="show the motion mask next to the image"
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -50,8 +53,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             headless=args.headless,
             loop=args.loop,
             max_frames=args.max_frames,
+            show_mask=args.show_mask,
         )
-    except SourceError as exc:
+    except ConfigError as exc:  # module options are checked when the modules are built
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (SourceError, OSError) as exc:  # OSError: e.g. the event log can't be written
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
@@ -60,7 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(
         f"Done:    {summary.frames} frames in {summary.seconds:.1f} s "
-        f"({summary.average_fps:.1f} FPS average)"
+        f"({summary.average_fps:.1f} FPS average), {summary.events} events"
     )
     return 0
 

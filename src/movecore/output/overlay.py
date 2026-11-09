@@ -49,3 +49,8 @@ def draw_label(frame: np.ndarray, text: str, origin: tuple[int, int] = (10, 24))
     bottom_right = (x + text_width + 4, y + baseline + 4)
     cv2.rectangle(frame, top_left, bottom_right, BLACK, cv2.FILLED)
     cv2.putText(frame, text, (x, y), font, scale, WHITE, thickness, cv2.LINE_AA)
+
+
+def side_by_side(frame: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """The frame with a black-and-white mask of the same size next to it."""
+    return np.hstack([frame, cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)])

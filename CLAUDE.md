@@ -245,13 +245,13 @@ Motions_Detection_Core-/
 │   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py
 │   ├── capture/                       # ✅ source.py, camera.py (by index or name), video_file.py, selection.py
 │   ├── preprocess/                    # ✅ transforms.py: crop-and-resize, mirror (color/blur added when needed)
-│   ├── motion/                        # M2–M3: frame_diff, background_sub, optical_flow, morphology, zones
+│   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, debounce, zones · M3: optical_flow
 │   ├── hands/                         # M4–M6: landmarker, features, gesture_rules, gesture_recognizer, classifier, dynamic
-│   └── output/                        # ✅ overlay.py (FPS, labels), display.py · later: event_logger, recorder
+│   └── output/                        # ✅ overlay.py (FPS, labels, side_by_side), display.py, event_logger.py · later: recorder
 ├── tests/
-│   ├── conftest.py                    # make_video fixture: tiny MJPG clips generated per test
-│   ├── unit/                          # ✅ config, pipeline, cli, dependencies, camera, video_file, selection, preprocess, overlay, display, app
-│   ├── integration/                   # ✅ test_run_video.py: whole app headless on a generated clip (91 tests total)
+│   ├── conftest.py                    # every test runs in a temp dir; square_frame and make_video fixtures
+│   ├── unit/                          # ✅ core, capture, preprocess, output, app, and one file per motion building block
+│   ├── integration/                   # ✅ test_run_video.py: whole app headless on generated clips, incl. logged events (161 tests total)
 │   └── fixtures/                      # tiny test images/clips
 └── .github/
     ├── workflows/ci.yml               # ubuntu: apt libgl1/libglib2.0-0, setup-uv, uv sync --locked, ruff check, ruff format --check, pytest
@@ -264,7 +264,10 @@ Motions_Detection_Core-/
 ```yaml
 input: {width: 640, height: 480, camera: FaceTime HD, flip: true}
 modules:
-  motion: {enabled: true, method: mog2, min_area: 500, zones: {}}
+  motion:                            # every option is explained in configs/default.yaml
+    {enabled: true, method: mog2, blur: 21, threshold: 25, history: 500, var_threshold: 16,
+     detect_shadows: true, kernel_size: 5, min_area: 500, warmup_frames: 30,
+     start_frames: 2, stop_frames: 15, zones: {}}   # zone e.g. left_half: [0.0, 0.0, 0.5, 1.0]
   optical_flow: {enabled: false, mode: sparse}
   hands:
     enabled: true
@@ -290,8 +293,8 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 |---|---|---|
 | Planning | Tool selection, stack, scope, README | ✅ Done |
 | **M0** | Repo setup, environment, CI & security checks | ✅ Done — pushed as `0eb3670`, CI + Security green. Check Dependabot alerts are enabled (Settings → Code security) |
-| **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | 🟡 Code, tests and docs done (91 tests). **Pending:** live camera check by Ming, commit + push, CI green |
-| M2 | Frame differencing → background subtraction → morphology/contours → zones & events | ⏳ |
+| **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | ✅ Done — `5a28a4b`, CI + Security green, live camera checked |
+| **M2** | Frame differencing → background subtraction → morphology/contours → zones & events | 🟡 Code, tests and docs done (161 tests). **Pending:** live check by Ming, commit + push, CI green |
 | M3 | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | ⏳ |
 | M4 | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | ⏳ |
 | M5 | Gesture recorder + custom scikit-learn classifier (+ evaluation) | ⏳ |
@@ -307,10 +310,22 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 - **Baseline:** capture plus preprocess runs at ~345 FPS on a 1280×720 video (headless).
 - **Run:** `uv run movecore`, `uv run movecore --source clip.mp4 --loop`, or `uv run movecore --headless --max-frames 300` for a quick benchmark.
 
-### M1 remaining
+### M2 summary
+- **Motion module** (`motion/module.py`, registered as `motion` in `app.MODULES`): (gray for `diff` only) → blur → mask (`diff`, `mog2` or `knn`) → `clean_mask` (open, close, dilate ×2) → `find_boxes` (≥ `min_area`) → debounced events.
+- **Events:** `motion.start` (boxes), `motion.stop` (duration_ms), `zone.enter` (zone), `zone.leave` (zone, duration_ms). They print to the terminal and are appended to `output.event_log` (JSONL; `null` turns it off).
+- **Zones:** `[x, y, w, h]` in fractions of the mirrored frame. Active when ≥ `min_area` moving pixels are inside. A fraction-of-zone rule was tried first and dropped: big zones never triggered for small objects.
+- **Options** are validated by `MotionSettings`; unknown keys are errors (typo protection). `warmup_frames` (30) suppresses events while the model learns.
+- **Core contract changes (ADR 0004):** modules take their config section as their only constructor argument, and may implement `draw(frame, result)` for the overlay.
+- **`--show-mask`:** shows the mask beside the image.
+- **Tests:** every test now runs in its own temp dir (autouse fixture), so relative paths like `logs/` never touch the repo. `square_frame` fixture for synthetic frames.
+- **MOG2/KNN get color frames, not gray.** On gray input the shadow test (50–100% of background brightness) threw away mid-dark objects, so bright things were detected far more than dark ones — Ming spotted this in the mask. Color lets a shadow be told apart from a different-colored object. Tests cover both cases. KNN marks the whole frame as moving for its first few frames, so its tests need `warmup_frames`.
+- **Burn-in / blind spots** (Ming noticed): MOG2 absorbs a still object after ln(ratio)/ln(1−1/history) frames (~1.8 s at defaults), and leaves a blind spot at that spot (~30 s after a 20 s hold). `background_ratio` (mog2 only) is exposed; default kept at 0.9 because lower values flag flicker more, and finger tracking (M4) doesn't use the background model. Don't gate hand tracking on MOG2 motion: a held finger fades out in ~2 s.
+- **Speed** (1280×720 clip, headless, mirrored, one zone): diff 239 FPS, MOG2 163, KNN 148 (color). Synthetic noise couldn't show whether color adds speckle; check on the real camera and raise `var_threshold` if so.
+
+### M2 remaining
 ```bash
-uv run movecore          # window shows the Mac camera; q or Esc quits
-git add . && git commit -m "feat: M1 capture pipeline with camera, video, preprocessing and display"
+uv run movecore --show-mask   # wave a hand: green box, MOTION label, events in the terminal
+git add . && git commit -m "feat: M2 motion detection with background subtraction, zones and event log"
 git push
 ```
 

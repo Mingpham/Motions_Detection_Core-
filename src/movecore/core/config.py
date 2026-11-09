@@ -74,4 +74,7 @@ def _validate_modules(section: Any) -> dict[str, dict[str, Any]]:
 def _validate_output(section: Any) -> dict[str, Any]:
     if not isinstance(section, dict):
         raise ConfigError("'output' must be a mapping")
+    event_log = section.get("event_log")
+    if event_log is not None and not (isinstance(event_log, str) and event_log.strip()):
+        raise ConfigError("'output.event_log' must be a file path, or null to turn it off")
     return section
