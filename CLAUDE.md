@@ -228,7 +228,7 @@ Motions_Detection_Core-/
 │   │   └── 0002-sklearn-for-custom-gestures.md
 │   └── paper/                         # Project paper (outline not written yet)
 ├── configs/
-│   ├── default.yaml                   # motion + hands enabled; optical_flow off until M3
+│   ├── default.yaml                   # motion + optical_flow + hands enabled
 │   ├── motion_only.yaml
 │   └── hands_only.yaml
 ├── models/                            # MediaPipe .task files & trained classifiers (git-ignored)
@@ -242,16 +242,16 @@ Motions_Detection_Core-/
 │   ├── __init__.py                    # __version__ = "0.1.0"
 │   ├── app.py                         # ✅ run loop: source → preprocess → pipeline → display
 │   ├── cli.py                         # ✅ --config, --source, --loop, --headless, --max-frames, --version
-│   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py
+│   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py, options.py
 │   ├── capture/                       # ✅ source.py, camera.py (by index or name), video_file.py, selection.py
 │   ├── preprocess/                    # ✅ transforms.py: crop-and-resize, mirror (color/blur added when needed)
-│   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, debounce, zones · M3: optical_flow
+│   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, debounce, zones · ✅ M3: optical_flow, flow_module
 │   ├── hands/                         # M4–M6: landmarker, features, gesture_rules, gesture_recognizer, classifier, dynamic
 │   └── output/                        # ✅ overlay.py (FPS, labels, side_by_side), display.py, event_logger.py · later: recorder
 ├── tests/
 │   ├── conftest.py                    # every test runs in a temp dir; square_frame and make_video fixtures
 │   ├── unit/                          # ✅ core, capture, preprocess, output, app, and one file per motion building block
-│   ├── integration/                   # ✅ test_run_video.py: whole app headless on generated clips, incl. logged events (161 tests total)
+│   ├── integration/                   # ✅ test_run_video.py: whole app headless on generated clips, incl. logged events (203 tests total)
 │   └── fixtures/                      # tiny test images/clips
 └── .github/
     ├── workflows/ci.yml               # ubuntu: apt libgl1/libglib2.0-0, setup-uv, uv sync --locked, ruff check, ruff format --check, pytest
@@ -268,7 +268,7 @@ modules:
     {enabled: true, method: mog2, blur: 21, threshold: 25, history: 500, var_threshold: 16,
      detect_shadows: true, kernel_size: 5, min_area: 500, warmup_frames: 30,
      start_frames: 2, stop_frames: 15, zones: {}}   # zone e.g. left_half: [0.0, 0.0, 0.5, 1.0]
-  optical_flow: {enabled: false, mode: sparse}
+  optical_flow: {enabled: true, mode: sparse, max_corners: 200, min_points: 5, min_speed: 40, dense_scale: 0.5, stable_frames: 3}
   hands:
     enabled: true
     max_hands: 2
@@ -294,8 +294,8 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 | Planning | Tool selection, stack, scope, README | ✅ Done |
 | **M0** | Repo setup, environment, CI & security checks | ✅ Done — pushed as `0eb3670`, CI + Security green. Check Dependabot alerts are enabled (Settings → Code security) |
 | **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | ✅ Done — `5a28a4b`, CI + Security green, live camera checked |
-| **M2** | Frame differencing → background subtraction → morphology/contours → zones & events | 🟡 Code, tests and docs done (161 tests). **Pending:** live check by Ming, commit + push, CI green |
-| M3 | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | ⏳ |
+| **M2** | Frame differencing → background subtraction → morphology/contours → zones & events | ✅ Done — `4a8b030`, CI + Security green |
+| **M3** | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | 🟡 Code, tests and docs done (203 tests). **Pending:** live check by Ming, commit + push, CI green |
 | M4 | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | ⏳ |
 | M5 | Gesture recorder + custom scikit-learn classifier (+ evaluation) | ⏳ |
 | M6 | Dynamic swipe gestures, benchmarks (FPS/RAM), documentation, paper | ⏳ |
@@ -322,10 +322,20 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 - **Burn-in / blind spots** (Ming noticed): MOG2 absorbs a still object after ln(ratio)/ln(1−1/history) frames (~1.8 s at defaults), and leaves a blind spot at that spot (~30 s after a 20 s hold). `background_ratio` (mog2 only) is exposed; default kept at 0.9 because lower values flag flicker more, and finger tracking (M4) doesn't use the background model. Don't gate hand tracking on MOG2 motion: a held finger fades out in ~2 s.
 - **Speed** (1280×720 clip, headless, mirrored, one zone): diff 239 FPS, MOG2 163, KNN 148 (color). Synthetic noise couldn't show whether color adds speckle; check on the real camera and raise `var_threshold` if so.
 
-### M2 remaining
+### M3 summary
+- **Optical flow module** (`motion/flow_module.py`, registered as `optical_flow` after `motion`): sparse Lucas-Kanade (default) or dense Farneback, both in `motion/optical_flow.py`.
+- **Sparse:** Shi-Tomasi corners, looked for only inside the previous frame's motion mask; pyramidal LK (21×21, 4 levels); forward-backward check (< 1 px). Overall velocity = median of points faster than `min_speed`, needing `min_points`.
+- **Dense:** Farneback on frames shrunk by `dense_scale`; HSV view (hue = direction, brightness = speed) tinted over moving pixels.
+- **Output:** `velocity` (px/s), `speed`, `direction` (left/right/up/down by dominant axis, on the mirrored screen), `angle_deg` (0 = right, 90 = up), and a velocity per motion box. `flow.direction` events via `StableLabel` (`stable_frames`).
+- **Module order is the registry order in `app.MODULES`**, not the config order, so readers run after what they read.
+- **Option checks are shared** in `core/options.py` (`OptionChecks`); motion settings use them too.
+- **Speed** (1280×720 textured walker, headless): motion only 110 FPS, + sparse flow 65, + dense flow 47. Sparse stays default to leave budget for M4. Measured speeds matched the true 160 px/s within 4%.
+- **Tests** use a `textured_frame` fixture: LK needs corners, and a plain square has only four.
+
+### M3 remaining
 ```bash
-uv run movecore --show-mask   # wave a hand: green box, MOTION label, events in the terminal
-git add . && git commit -m "feat: M2 motion detection with background subtraction, zones and event log"
+uv run movecore   # wave a hand: yellow arrows, a "left/right … px/s" label, flow.direction events
+git add . && git commit -m "feat: M3 optical flow with direction and speed"
 git push
 ```
 

@@ -1,4 +1,4 @@
-from movecore.motion.debounce import Debouncer
+from movecore.motion.debounce import Debouncer, StableLabel
 
 
 def run(debouncer, detections):
@@ -23,3 +23,17 @@ def test_a_short_pause_does_not_stop():
     changes = run(debouncer, [True, False, False, True, False, False])
     assert changes == ["start", None, None, None, None, None]
     assert debouncer.active
+
+
+def test_stable_label_needs_repeats_before_changing():
+    label = StableLabel(frames=2)
+    changes = [label.update(value) for value in ["left", "left", "left", "right", "left"]]
+    assert changes == [False, True, False, False, False]
+    assert label.current == "left"
+
+
+def test_stable_label_can_go_back_to_nothing():
+    label = StableLabel(frames=1)
+    label.update("up")
+    assert label.update(None)
+    assert label.current is None

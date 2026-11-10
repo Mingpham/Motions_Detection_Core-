@@ -28,8 +28,13 @@ modules:
     #   top_right: [0.5, 0.0, 0.5, 0.5]
     zones: {}
   optical_flow:
-    enabled: false
-    mode: sparse
+    enabled: true
+    mode: sparse          # sparse: Lucas-Kanade on corners (fast) | dense: Farneback on every pixel
+    max_corners: 200      # sparse: most corners tracked per frame
+    min_points: 5         # sparse: moving corners needed before a direction is reported
+    min_speed: 40         # px/s; anything slower counts as still
+    dense_scale: 0.5      # dense: shrink frames first (0.5 = 4x fewer pixels to compute)
+    stable_frames: 3      # frames a direction must hold before a flow.direction event
 
 output:
   overlay: true

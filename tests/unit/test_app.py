@@ -63,8 +63,24 @@ def test_build_modules_passes_options_and_reports_missing(monkeypatch):
     assert missing == ["hands"]
 
 
-def test_motion_is_registered():
-    assert "motion" in app.MODULES
+def test_motion_modules_are_registered_in_run_order():
+    assert list(app.MODULES)[:2] == ["motion", "optical_flow"]
+
+
+def test_modules_run_in_registry_order_not_config_order(monkeypatch):
+    class Flow(Dummy):
+        name = "optical_flow"
+
+    monkeypatch.setattr(app, "MODULES", {"motion": Dummy, "optical_flow": Flow})
+    config = AppConfig(
+        input={"width": 640, "height": 480},
+        modules={"optical_flow": {"enabled": True}, "motion": {"enabled": True}},
+        output={},
+    )
+
+    modules, _ = app.build_modules(config)
+
+    assert [module.name for module in modules] == ["motion", "optical_flow"]
 
 
 def test_window_shows_drawings_and_the_mask_beside_the_image(monkeypatch, make_video):

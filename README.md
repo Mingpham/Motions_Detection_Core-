@@ -331,8 +331,8 @@ All tools are free and open source.
 |---|---|---|
 | **M0** | Repo setup, environment, CI & security checks | ✅ |
 | **M1** | Capture pipeline (webcam + video) with FPS counter | ✅ |
-| **M2** | Frame differencing → background subtraction → zones & events | 🟡 |
-| **M3** | Optical flow & motion direction | ⏳ |
+| **M2** | Frame differencing → background subtraction → zones & events | ✅ |
+| **M3** | Optical flow & motion direction | 🟡 |
 | **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ⏳ |
 | **M5** | Gesture recorder + custom classifier | ⏳ |
 | **M6** | Dynamic swipe gestures, benchmarks, documentation | ⏳ |
@@ -343,7 +343,7 @@ All tools are free and open source.
 
 ## 🚀 Getting Started
 
-> Motion detection works (M2): moving regions get boxes, and events print in the terminal and go to `logs/events.jsonl`. Hand tracking arrives in M4.
+> Motion detection (M2) and optical flow (M3) work: moving regions get boxes, arrows show direction and speed, and events print in the terminal and go to `logs/events.jsonl`. Hand tracking arrives in M4.
 
 ### Prerequisites
 

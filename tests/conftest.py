@@ -43,3 +43,18 @@ def make_video(tmp_path):
         return path
 
     return make
+
+
+@pytest.fixture
+def textured_frame():
+    """Build a gray BGR frame with a speckled square at (x, y), full of corners to track."""
+    rng = np.random.default_rng(0)
+    texture = cv2.GaussianBlur((rng.random((80, 80)) * 255).astype(np.uint8), (5, 5), 0)
+    texture = cv2.cvtColor(texture, cv2.COLOR_GRAY2BGR)
+
+    def make(x, y=200, width=640, height=480):
+        frame = np.full((height, width, 3), 90, dtype=np.uint8)
+        frame[y : y + 80, x : x + 80] = texture
+        return frame
+
+    return make

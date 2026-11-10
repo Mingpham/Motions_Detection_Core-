@@ -29,6 +29,8 @@ def quick_motion_config(tmp_path):
     config = yaml.safe_load(DEFAULT_CONFIG.read_text(encoding="utf-8"))
     config["modules"]["motion"] |= {"method": "diff", "warmup_frames": 0, "stop_frames": 3}
     config["modules"]["motion"]["zones"] = {"left": [0, 0, 0.5, 1]}
+    # A plain white square has only 4 corners to follow.
+    config["modules"]["optical_flow"] |= {"min_points": 2, "stable_frames": 2}
     path = tmp_path / "quick.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return str(path)
@@ -72,6 +74,8 @@ def test_moving_square_produces_logged_events(make_video, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "motion.start" in out
     assert "motion.stop" in out
+    # The square moves right in the clip, but the image is mirrored, so on screen it goes left.
+    assert "flow.direction direction=left" in out
     # The default config logs to logs/events.jsonl, relative to the (temporary) working dir.
     records = [json.loads(line) for line in Path("logs/events.jsonl").read_text().splitlines()]
     types = [record["type"] for record in records]

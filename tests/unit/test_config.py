@@ -23,8 +23,8 @@ def write_config(tmp_path: Path, text: str) -> Path:
 @pytest.mark.parametrize(
     ("filename", "expected"),
     [
-        ("default.yaml", ["motion", "hands"]),
-        ("motion_only.yaml", ["motion"]),
+        ("default.yaml", ["motion", "optical_flow", "hands"]),
+        ("motion_only.yaml", ["motion", "optical_flow"]),
         ("hands_only.yaml", ["hands"]),
     ],
 )

@@ -28,3 +28,29 @@ class Debouncer:
         self.active = detected
         self._streak = 0
         return "start" if detected else "stop"
+
+
+class StableLabel:
+    """Accepts a new label only after it has been seen ``frames`` times in a row.
+
+    ``update`` returns True when the accepted label changes; read it from ``current``.
+    """
+
+    def __init__(self, frames: int) -> None:
+        self.frames = frames
+        self.current: str | None = None
+        self._candidate: str | None = None
+        self._count = 0
+
+    def update(self, label: str | None) -> bool:
+        if label == self.current:
+            self._candidate, self._count = None, 0
+            return False
+        if label == self._candidate:
+            self._count += 1
+        else:
+            self._candidate, self._count = label, 1
+        if self._count < self.frames:
+            return False
+        self.current, self._candidate, self._count = label, None, 0
+        return True

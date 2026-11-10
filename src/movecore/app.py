@@ -13,14 +13,18 @@ from movecore.core.config import AppConfig
 from movecore.core.events import ALL_EVENTS, Event, EventBus
 from movecore.core.module import FrameContext, Module
 from movecore.core.pipeline import Pipeline
-from movecore.motion import MotionModule
+from movecore.motion import MotionModule, OpticalFlowModule
 from movecore.output import Display, EventLogger, FpsCounter, draw_label, side_by_side
 from movecore.preprocess import preprocess
 
 ModuleFactory = Callable[[dict[str, Any]], Module]
 
 # Module name in the config -> class. Each milestone registers its modules here.
-MODULES: dict[str, ModuleFactory] = {"motion": MotionModule}
+# Modules run in this order, so a module comes after the ones whose results it reads.
+MODULES: dict[str, ModuleFactory] = {
+    "motion": MotionModule,
+    "optical_flow": OpticalFlowModule,  # reads motion's mask and boxes when present
+}
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,8 @@ class RunSummary:
 def build_modules(config: AppConfig) -> tuple[list[Module], list[str]]:
     """Create the enabled modules that exist so far; also return the names still missing."""
     enabled = config.enabled_modules()
-    modules = [MODULES[name](config.modules[name]) for name in enabled if name in MODULES]
+    # Registry order, not config order, so readers always run after what they read.
+    modules = [build(config.modules[name]) for name, build in MODULES.items() if name in enabled]
     missing = [name for name in enabled if name not in MODULES]
     return modules, missing
 
