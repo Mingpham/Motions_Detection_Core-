@@ -10,9 +10,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from movecore.hands.landmarks import Hand
+from movecore.hands.landmarks import OTHER_SIDE, Hand
 
-SWAP_SIDE = {"Left": "Right", "Right": "Left"}
 # The Gesture Recognizer's 7 labels, renamed to match the rule-based ones. Its "None"
 # (no known gesture) isn't listed, so it becomes None.
 BUILTIN_GESTURES = {
@@ -96,7 +95,7 @@ def hands_from_result(result: Any, mirrored: bool) -> list[Hand]:
     hands = []
     for i, landmarks in enumerate(result.hand_landmarks):
         side = result.handedness[i][0]
-        handedness = SWAP_SIDE[side.category_name] if mirrored else side.category_name
+        handedness = OTHER_SIDE[side.category_name] if mirrored else side.category_name
         gesture, gesture_score = None, 0.0
         if gestures and gestures[i]:
             top = gestures[i][0]
@@ -110,6 +109,7 @@ def hands_from_result(result: Any, mirrored: bool) -> list[Hand]:
                 world=_points(result.hand_world_landmarks[i]),
                 gesture=gesture,
                 gesture_score=gesture_score,
+                mirrored=mirrored,
             )
         )
     return hands

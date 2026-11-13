@@ -42,7 +42,10 @@ def test_landmarks_become_arrays():
 def test_side_is_swapped_when_the_image_is_mirrored():
     # On the mirrored camera view, MediaPipe calls your right hand "Left".
     (hand,) = hands_from_result(fake_result("Left"), mirrored=True)
+
     assert hand.handedness == "Right"
+    assert hand.mirrored
+    assert hand.looks_like == "Left"  # what MediaPipe saw: a left-hand shape
 
 
 @pytest.mark.parametrize(

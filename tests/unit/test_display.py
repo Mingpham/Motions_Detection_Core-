@@ -36,6 +36,17 @@ def test_quit_keys_stop(window, key):
     assert not Display().show(FRAME)
 
 
+def test_last_key_is_remembered(window):
+    display = Display()
+    window["key"] = ord(" ")
+    display.show(FRAME)
+    assert display.last_key == ord(" ")
+
+    window["key"] = -1
+    display.show(FRAME)
+    assert display.last_key == -1
+
+
 def test_closed_window_stops(window):
     window["visible"] = 0.0
     assert not Display().show(FRAME)

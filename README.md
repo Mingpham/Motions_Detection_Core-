@@ -182,11 +182,11 @@ flowchart LR
 ```mermaid
 flowchart LR
     A["Record samples<br/>scripts/record_gestures.py"] --> B["Landmarks dataset<br/>data/gestures/*.csv"]
-    B --> C["Normalize features<br/>wrist-relative · scale"]
+    B --> C["Normalize features<br/>wrist-relative · scale · mirror left"]
     C --> D["Train classifier<br/>scikit-learn"]
-    D --> E["Evaluate<br/>accuracy · confusion matrix"]
-    E --> F["Saved model<br/>models/gesture_clf.joblib"]
-    F --> G["Live inference<br/>hands/classifier.py"]
+    D --> E["Evaluate<br/>cross-validation by session · confusion matrix"]
+    E --> F["Saved model<br/>models/gesture_clf.npz (no pickle)"]
+    F --> G["Live inference<br/>hands/classifier.py (NumPy)"]
 ```
 
 ### Design Principles
@@ -260,8 +260,11 @@ movement-detection-core/
 │   │   ├── landmarks.py               # The 21 points, bones, and the Hand type
 │   │   ├── gesture_rules.py           # Rule-based gestures (finger count, pinch, thumb up/down)
 │   │   ├── settings.py                # Option checks for modules.hands
-│   │   ├── features.py                # (M5) Landmark normalization & feature vectors
-│   │   ├── classifier.py              # (M5) Custom scikit-learn classifier inference
+│   │   ├── features.py                # 63 numbers per hand: wrist-relative, scaled, mirrored
+│   │   ├── dataset.py                 # Recorded samples: CSV writing, loading, validation
+│   │   ├── recorder.py                # What to keep while recording a gesture
+│   │   ├── training.py                # scikit-learn training & cross-validation (training only)
+│   │   ├── classifier.py              # Run the trained model with NumPy; .npz, no pickle
 │   │   └── dynamic.py                 # (M6) Swipe / motion-over-time gestures
 │   │
 │   ├── output/                        # OUTPUTS
@@ -337,8 +340,8 @@ All tools are free and open source.
 | **M1** | Capture pipeline (webcam + video) with FPS counter | ✅ |
 | **M2** | Frame differencing → background subtraction → zones & events | ✅ |
 | **M3** | Optical flow & motion direction | ✅ |
-| **M4** | Hand landmarks, rule-based gestures, built-in recognizer | 🟡 |
-| **M5** | Gesture recorder + custom classifier | ⏳ |
+| **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ✅ |
+| **M5** | Gesture recorder + custom classifier | 🟡 |
 | **M6** | Dynamic swipe gestures, benchmarks, documentation | ⏳ |
 | **v2** | Body pose module | 🔮 |
 | **v3** | Face landmarks & expression module | 🔮 |
@@ -382,6 +385,11 @@ uv run movecore --config configs/motion_only.yaml
 
 # Or run on a video file
 uv run movecore --source data/clips/sample.mp4
+
+# Teach it your own gestures (see docs/fundamentals/05-custom-gestures.md)
+uv run python scripts/record_gestures.py rock      # SPACE to record, q to quit; repeat per gesture
+uv run python scripts/train_gesture_classifier.py  # prints accuracy, saves models/gesture_clf.npz
+# then set modules.hands.gestures.custom_classifier: true
 ```
 
 ### macOS camera permission

@@ -131,3 +131,35 @@ def hand_points():
         return points
 
     return make
+
+
+@pytest.fixture
+def write_gestures(hand_points, tmp_path):
+    """Record synthetic gestures as record_gestures.py would, and return the folder.
+
+    Each gesture is a hand pose plus random jitter, recorded in ``sessions`` runs with both
+    left and right hands.
+    """
+    from movecore.hands.dataset import SampleWriter
+    from movecore.hands.landmarks import Hand
+
+    poses = {
+        "open": {"fingers": "1111"},
+        "fist": {"fingers": "0000", "thumb_out": False},
+        "peace": {"fingers": "1100", "thumb_out": False},
+    }
+
+    def make(labels=("open", "fist", "peace"), sessions=2, samples=30, folder="gestures"):
+        rng = np.random.default_rng(0)
+        for label in labels:
+            for session in range(sessions):
+                with SampleWriter(tmp_path / folder, label, f"s{session}") as writer:
+                    for i in range(samples):
+                        world = hand_points(**poses[label]) + rng.normal(0, 0.002, (21, 3))
+                        side = "Right" if i % 2 else "Left"
+                        if side == "Left":  # a left hand is a mirrored right hand
+                            world = world * (-1, 1, 1)
+                        writer.write(Hand(side, 0.9, np.zeros((21, 3)), world))
+        return tmp_path / folder
+
+    return make

@@ -35,7 +35,8 @@ def test_plain_landmarker_when_the_recognizer_is_off():
         ({"gestures": ["rules"]}, "'modules.hands.gestures' must be a mapping"),
         ({"gestures": {"rule": True}}, "Unknown 'modules.hands.gestures' options: rule"),
         ({"gestures": {"rules": 1}}, "modules.hands.gestures.rules"),
-        ({"gestures": {"custom_classifier": True}}, "arrives in M5"),
+        ({"classifier_model": "models/gesture_clf.joblib"}, ".npz model file"),
+        ({"min_classifier_score": 0}, "min_classifier_score"),
         ({"gestures": {"dynamic": True}}, "arrives in M6"),
     ],
 )

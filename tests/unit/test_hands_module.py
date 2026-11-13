@@ -7,7 +7,9 @@ from movecore.core.config import ConfigError
 from movecore.core.module import FrameContext
 from movecore.hands import HandsModule
 from movecore.hands import module as hands_module
+from movecore.hands.dataset import load_samples
 from movecore.hands.landmarks import Hand
+from movecore.hands.training import train
 
 FAST = {"start_frames": 2, "stop_frames": 3, "stable_frames": 2}
 
@@ -155,6 +157,39 @@ def test_missing_model_is_reported_before_setup():
     Path("models/gesture_recognizer.task").unlink()
     with pytest.raises(ConfigError, match="Hand model not found"):
         HandsModule({})
+
+
+@pytest.fixture
+def trained(write_gestures):
+    """Train a classifier on synthetic open/fist/peace poses and save it where hands looks."""
+    classifier, *_ = train(load_samples(write_gestures(samples=20)))
+    classifier.save("models/gesture_clf.npz")
+
+
+CUSTOM = FAST | {"gestures": {"builtin_recognizer": False, "custom_classifier": True}}
+
+
+def test_custom_classifier_reports_its_gestures(hand, trained):
+    _, results, events = run([[hand(fingers="1111")]] * 3, CUSTOM)
+
+    reading = results[-1].data["hands"][0]
+    assert reading.custom_gesture == "open"
+    assert reading.custom_score > 0.7
+    custom = [e[1] for e in events if e[1].get("method") == "custom"]
+    score = round(reading.custom_score, 2)
+    assert custom == [{"hand": "Right", "gesture": "open", "method": "custom", "score": score}]
+
+
+def test_unsure_custom_labels_are_ignored(hand, trained):
+    _, results, events = run([[hand()]] * 3, CUSTOM | {"min_classifier_score": 1.0})
+
+    assert results[-1].data["hands"][0].custom_gesture is None
+    assert all(e[1].get("method") != "custom" for e in events)
+
+
+def test_missing_classifier_says_how_to_train():
+    with pytest.raises(ConfigError, match="train_gesture_classifier.py"):
+        HandsModule(CUSTOM)
 
 
 def test_draw_marks_the_hand(hand):

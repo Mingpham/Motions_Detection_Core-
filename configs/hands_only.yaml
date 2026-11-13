@@ -16,15 +16,17 @@ modules:
     mirrored: true                # match input.flip, so Left/Right are your real hands
     pinch_ratio: 0.25             # rules: thumb and index tips closer than this x hand size = pinch
     min_gesture_score: 0.5        # built-in recognizer: ignore labels it's less sure of
+    min_classifier_score: 0.7     # custom classifier: ignore labels it's less sure of
     start_frames: 3               # frames a hand must be seen before hand.enter
     stop_frames: 10               # frames it must be missing before hand.leave
     stable_frames: 5              # frames a gesture must hold before gesture.detected
     landmarker_model: models/hand_landmarker.task      # used when builtin_recognizer is off
     recognizer_model: models/gesture_recognizer.task   # includes the landmarker; used when on
+    classifier_model: models/gesture_clf.npz           # made by scripts/train_gesture_classifier.py
     gestures:
       rules: true                 # finger count, pinch, thumb up/down from geometry
       builtin_recognizer: true    # MediaPipe's 7 trained gestures
-      custom_classifier: false    # M5
+      custom_classifier: false    # your own gestures; record and train first (docs/fundamentals/05)
       dynamic: false              # M6
 
 output:

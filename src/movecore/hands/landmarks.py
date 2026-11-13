@@ -19,6 +19,7 @@ FINGERS: dict[str, tuple[int, int, int]] = {
     "pinky": (17, 18, 20),
 }
 TIPS = tuple(tip for _, _, tip in FINGERS.values())
+OTHER_SIDE = {"Left": "Right", "Right": "Left"}
 
 # The bones to draw: each finger from the wrist out, then across the palm.
 CONNECTIONS: tuple[tuple[int, int], ...] = (
@@ -47,6 +48,12 @@ class Hand:
     world: np.ndarray  # (21, 3)
     gesture: str | None = None  # built-in recognizer's label, when it ran and was sure
     gesture_score: float = 0.0
+    mirrored: bool = False  # it came from a mirrored image
+
+    @property
+    def looks_like(self) -> str:
+        """The side this hand's shape has in the image: in a mirror, a left hand looks right."""
+        return OTHER_SIDE[self.handedness] if self.mirrored else self.handedness
 
     def pixels(self, width: int, height: int) -> np.ndarray:
         """The points as integer ``(x, y)`` pixel positions, shape (21, 2)."""

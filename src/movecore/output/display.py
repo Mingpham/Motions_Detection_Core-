@@ -15,14 +15,16 @@ class Display:
 
     def __init__(self, title: str = "MoveCore") -> None:
         self.title = title
+        self.last_key = -1  # the key pressed during the last show(), or -1 for none
         cv2.namedWindow(title, cv2.WINDOW_AUTOSIZE)
 
     def show(self, frame: np.ndarray) -> bool:
         """Show a frame. Return False once the user presses q or Esc, or closes the window."""
         cv2.imshow(self.title, frame)
         # waitKey also runs the window's event loop, so it must be called every frame.
-        key = cv2.waitKey(1) & 0xFF
-        if key in QUIT_KEYS:
+        key = cv2.waitKey(1)
+        self.last_key = key & 0xFF if key != -1 else -1
+        if self.last_key in QUIT_KEYS:
             return False
         return self._is_open()
 

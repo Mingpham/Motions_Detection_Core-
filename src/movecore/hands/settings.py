@@ -11,8 +11,17 @@ from movecore.core.options import OptionChecks
 CHECKS = OptionChecks("modules.hands")
 GESTURE_CHECKS = OptionChecks("modules.hands.gestures")
 # Gesture methods that later milestones add; until then they must stay off.
-NOT_BUILT_YET = {"custom_classifier": "M5", "dynamic": "M6"}
+NOT_BUILT_YET = {"dynamic": "M6"}
 DOWNLOAD_HINT = "download the models with: uv run python scripts/download_models.py"
+MODEL_SUFFIXES = {
+    "landmarker_model": ".task",
+    "recognizer_model": ".task",
+    "classifier_model": ".npz",
+}
+TRAIN_HINT = (
+    "record gestures with scripts/record_gestures.py, then train with "
+    "scripts/train_gesture_classifier.py"
+)
 
 
 @dataclass(frozen=True)
@@ -46,11 +55,13 @@ class HandSettings:
     mirrored: bool = True
     pinch_ratio: float = 0.25
     min_gesture_score: float = 0.5
+    min_classifier_score: float = 0.7
     start_frames: int = 3
     stop_frames: int = 10
     stable_frames: int = 5
     landmarker_model: str = "models/hand_landmarker.task"
     recognizer_model: str = "models/gesture_recognizer.task"
+    classifier_model: str = "models/gesture_clf.npz"
     gestures: GestureSettings = field(default_factory=GestureSettings)
 
     @classmethod
@@ -66,13 +77,14 @@ class HandSettings:
         CHECKS.boolean("mirrored", settings.mirrored)
         CHECKS.number("pinch_ratio", settings.pinch_ratio, at_most=1)
         CHECKS.number("min_gesture_score", settings.min_gesture_score, at_most=1)
+        CHECKS.number("min_classifier_score", settings.min_classifier_score, at_most=1)
         CHECKS.integer("start_frames", settings.start_frames, 1)
         CHECKS.integer("stop_frames", settings.stop_frames, 1)
         CHECKS.integer("stable_frames", settings.stable_frames, 1)
-        for name in ("landmarker_model", "recognizer_model"):
+        for name, suffix in MODEL_SUFFIXES.items():
             value = getattr(settings, name)
-            if not (isinstance(value, str) and value.endswith(".task")):
-                raise CHECKS.error(name, "a path to a .task model file", value)
+            if not (isinstance(value, str) and value.endswith(suffix)):
+                raise CHECKS.error(name, f"a path to a {suffix} model file", value)
         return settings
 
     @property

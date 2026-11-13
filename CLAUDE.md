@@ -2,7 +2,7 @@
 
 > This file packs the full planning conversation for the **MoveCore** project so Claude Code can continue the work locally. Put it in the repo root as `CLAUDE.md` (Claude Code reads it automatically at the start of each session).
 >
-> Last updated: 2026-11-13
+> Last updated: 2026-11-13 (M5)
 
 ---
 
@@ -191,11 +191,11 @@ flowchart LR
 ```mermaid
 flowchart LR
     A["Record samples<br/>scripts/record_gestures.py"] --> B["Landmarks dataset<br/>data/gestures/*.csv"]
-    B --> C["Normalize features<br/>wrist-relative · scale"]
+    B --> C["Normalize features<br/>wrist-relative · scale · mirror left"]
     C --> D["Train classifier<br/>scikit-learn"]
-    D --> E["Evaluate<br/>accuracy · confusion matrix"]
-    E --> F["Saved model<br/>models/gesture_clf.joblib"]
-    F --> G["Live inference<br/>hands/classifier.py"]
+    D --> E["Evaluate<br/>cross-validation by session · confusion matrix"]
+    E --> F["Saved model<br/>models/gesture_clf.npz (no pickle)"]
+    F --> G["Live inference<br/>hands/classifier.py (NumPy)"]
 ```
 
 ### Design principles
@@ -235,8 +235,8 @@ Motions_Detection_Core-/
 ├── data/{gestures,clips}/             # Datasets & test videos (git-ignored)
 ├── scripts/
 │   ├── download_models.py             # ✅ exists
-│   ├── record_gestures.py             # M5
-│   ├── train_gesture_classifier.py    # M5
+│   ├── record_gestures.py             # ✅ M5: label → data/gestures/<label>.csv (SPACE to record)
+│   ├── train_gesture_classifier.py    # ✅ M5: cross-validate, confusion matrix, save .npz
 │   └── benchmark.py                   # M6
 ├── src/movecore/
 │   ├── __init__.py                    # __version__ = "0.1.0"
@@ -246,10 +246,10 @@ Motions_Detection_Core-/
 │   ├── capture/                       # ✅ source.py, camera.py (by index or name), video_file.py, selection.py
 │   ├── preprocess/                    # ✅ transforms.py: crop-and-resize, mirror (color/blur added when needed)
 │   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, zones · ✅ M3: optical_flow, flow_module
-│   ├── hands/                         # 🟡 M4: module, landmarker (both MediaPipe models), landmarks, gesture_rules, settings · M5: features, classifier · M6: dynamic
+│   ├── hands/                         # ✅ M4: module, landmarker (both MediaPipe models), landmarks, gesture_rules, settings · 🟡 M5: features, dataset, recorder, training, classifier · M6: dynamic
 │   └── output/                        # ✅ overlay.py (FPS, labels, side_by_side), display.py, event_logger.py · later: recorder
 ├── tests/
-│   ├── conftest.py                    # every test runs in a temp dir; default_config, square_frame, make_video, textured_frame fixtures
+│   ├── conftest.py                    # every test runs in a temp dir; default_config, square_frame, make_video, textured_frame, hand_points, write_gestures fixtures
 │   ├── unit/                          # ✅ core, capture, preprocess, output, app, and one file per motion building block
 │   ├── integration/                   # ✅ test_run_video.py: whole app headless on generated clips, incl. logged events (203 tests total)
 │   └── fixtures/                      # tiny test images/clips
@@ -297,8 +297,8 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 | **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | ✅ Done — `5a28a4b`, CI + Security green, live camera checked |
 | **M2** | Frame differencing → background subtraction → morphology/contours → zones & events | ✅ Done — `4a8b030`, CI + Security green |
 | **M3** | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | ✅ Done — `d62b35e`, live camera checked |
-| **M4** | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | 🟡 Code, tests and docs done (255 tests), live camera checked (sides fixed). **Pending:** commit + push, CI green |
-| M5 | Gesture recorder + custom scikit-learn classifier (+ evaluation) | ⏳ |
+| **M4** | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | ✅ Done — `5dab76d`, live camera checked (sides fixed) |
+| **M5** | Gesture recorder + custom scikit-learn classifier (+ evaluation) | 🟡 Code, tests and docs done (315 tests). **Pending:** review by Ming, live recording + training check, commit + push, CI green |
 | M6 | Dynamic swipe gestures, benchmarks (FPS/RAM), documentation, paper | ⏳ |
 | v2 / v3 | Body pose / face & expression | 🔮 |
 
@@ -345,9 +345,24 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 - **Tests:** rules on synthetic hands (`make_hand` in `test_gesture_rules.py`, any rotation/scale); module with a `FakeDetector`; real-model tests skip when `models/` is missing (CI). The `default_config` fixture points hands at the repo's models, or disables hands when they're missing.
 - MediaPipe prints ~5 C++ log lines at startup; env vars (`GLOG_minloglevel`) don't silence them in 1.2.2. Harmless.
 
-### M4 remaining
+### M5 summary
+- **Flow:** `scripts/record_gestures.py LABEL` → `data/gestures/LABEL.csv` (raw world landmarks + real side + `mirrored`, one session per run) → `hands/features.py` (63 numbers) → `scripts/train_gesture_classifier.py` (`hands/training.py`) → `models/gesture_clf.npz` → `HandsModule` with `gestures.custom_classifier: true` → `gesture.detected` with `method: custom`, `score`.
+- **Features:** wrist-relative, divided by hand size (wrist → middle knuckle), x flipped for left-hand *shapes*. Uses `Hand.looks_like` (the side the shape has in the image), not the real side: found by an end-to-end test where recording mirrored and running unmirrored turned `pointing_up` into `victory`. Rotation is kept (thumb up ≠ down).
+- **Training:** logistic regression vs MLP (64 ReLU units), best cross-validated accuracy wins (tie → simpler). `StratifiedGroupKFold` by session when every gesture has ≥ 2 sessions (avoids leakage from near-duplicate frames); otherwise `StratifiedKFold` and the script warns the number is optimistic. Needs ≥ 2 gestures and ≥ 20 samples each.
+- **No pickle (ADR 0006):** weights copied into `GestureClassifier` and saved as `.npz`, loaded with `allow_pickle=False` + shape checks; inference in NumPy (ReLU layers + softmax). Binary sklearn models (one output) become softmax([0, z]). The live app never imports scikit-learn (import ~2–9 s); classification ~0.04 ms per hand.
+- **Recorder:** every 3rd frame, only when exactly one hand is visible; labels must match `[a-z0-9_]{1,32}` (it's a filename). `Display.last_key` added for SPACE. `draw_hand` is now a module-level function in `hands/module.py`, shared with the recorder.
+- **Settings:** `classifier_model` (must end in `.npz`), `min_classifier_score` (0.7). A missing classifier → `ConfigError` with the record/train hint, before the camera opens.
+- **Checked end to end** with the real MediaPipe model on clips made from the sample photos: record → train → live, all 3 gestures recognized (0.97–1.0).
+- **Tests:** synthetic recordings via `write_gestures`; the NumPy copy matches `predict_proba` (2 and 3 classes, both models); a pickled `.npz` is refused; scripts tested end to end with a fake detector and window (`tests/integration/test_gesture_scripts.py`). The suite takes ~11–20 s now, mostly scikit-learn.
+- **FPS note:** with Docker and Android Studio running, the Mac's load average hit 20 and all FPS numbers dropped 4–8×. Benchmark with them closed.
+
+### M5 remaining
 ```bash
-git add -A && git commit -m "feat: M4 hand landmarks and gestures"
+uv run python scripts/record_gestures.py rock       # and 2-3 more gestures + "none"; a second session of each
+uv run python scripts/train_gesture_classifier.py
+# set modules.hands.gestures.custom_classifier: true in configs/default.yaml, then:
+uv run movecore
+git add -A && git commit -m "feat: M5 custom gesture recorder and classifier"
 git push
 ```
 
