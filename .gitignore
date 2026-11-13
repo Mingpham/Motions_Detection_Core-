@@ -21,6 +21,7 @@ models/*
 data/**
 !data/**/
 !data/**/.gitkeep
+CLAUDE.md
 
 # Runtime output
 logs/
