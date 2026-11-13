@@ -7,10 +7,10 @@ from typing import Any
 import cv2
 import numpy as np
 
+from movecore.core.debounce import StableLabel
 from movecore.core.events import Event
 from movecore.core.module import FrameContext, Module, ModuleResult
 from movecore.core.options import OptionChecks
-from movecore.motion.debounce import StableLabel
 from movecore.motion.morphology import Box
 from movecore.motion.optical_flow import (
     dense_flow,

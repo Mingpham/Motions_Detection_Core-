@@ -13,6 +13,7 @@ from movecore.core.config import AppConfig
 from movecore.core.events import ALL_EVENTS, Event, EventBus
 from movecore.core.module import FrameContext, Module
 from movecore.core.pipeline import Pipeline
+from movecore.hands import HandsModule
 from movecore.motion import MotionModule, OpticalFlowModule
 from movecore.output import Display, EventLogger, FpsCounter, draw_label, side_by_side
 from movecore.preprocess import preprocess
@@ -24,6 +25,7 @@ ModuleFactory = Callable[[dict[str, Any]], Module]
 MODULES: dict[str, ModuleFactory] = {
     "motion": MotionModule,
     "optical_flow": OpticalFlowModule,  # reads motion's mask and boxes when present
+    "hands": HandsModule,
 }
 
 

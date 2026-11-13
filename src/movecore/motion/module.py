@@ -6,10 +6,10 @@ from typing import Any
 import cv2
 import numpy as np
 
+from movecore.core.debounce import Debouncer
 from movecore.core.events import Event
 from movecore.core.module import FrameContext, Module, ModuleResult
 from movecore.motion.background_sub import BackgroundSubtractor
-from movecore.motion.debounce import Debouncer
 from movecore.motion.frame_diff import FrameDifferencer
 from movecore.motion.morphology import Box, clean_mask, find_boxes
 from movecore.motion.settings import MotionSettings

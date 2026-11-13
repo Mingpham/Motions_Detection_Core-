@@ -10,13 +10,22 @@ input:
 modules:
   hands:
     enabled: true
-    max_hands: 2
-    min_detection_confidence: 0.5
+    max_hands: 2                  # 1 or 2; hands are told apart by side (Left/Right)
+    min_detection_confidence: 0.5 # palm detector: how sure before a new hand counts
+    min_tracking_confidence: 0.5  # below this, the hand is searched for again from scratch
+    mirrored: true                # match input.flip, so Left/Right are your real hands
+    pinch_ratio: 0.25             # rules: thumb and index tips closer than this x hand size = pinch
+    min_gesture_score: 0.5        # built-in recognizer: ignore labels it's less sure of
+    start_frames: 3               # frames a hand must be seen before hand.enter
+    stop_frames: 10               # frames it must be missing before hand.leave
+    stable_frames: 5              # frames a gesture must hold before gesture.detected
+    landmarker_model: models/hand_landmarker.task      # used when builtin_recognizer is off
+    recognizer_model: models/gesture_recognizer.task   # includes the landmarker; used when on
     gestures:
-      rules: true
-      builtin_recognizer: true
-      custom_classifier: false
-      dynamic: false
+      rules: true                 # finger count, pinch, thumb up/down from geometry
+      builtin_recognizer: true    # MediaPipe's 7 trained gestures
+      custom_classifier: false    # M5
+      dynamic: false              # M6
 
 output:
   overlay: true

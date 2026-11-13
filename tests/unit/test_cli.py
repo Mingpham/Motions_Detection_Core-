@@ -1,11 +1,7 @@
-from pathlib import Path
-
 import pytest
 
 from movecore import __version__
 from movecore.cli import main
-
-DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "configs" / "default.yaml"
 
 
 def test_version_flag(capsys):
@@ -16,11 +12,11 @@ def test_version_flag(capsys):
     assert __version__ in capsys.readouterr().out
 
 
-def test_missing_source_fails_cleanly(capsys):
-    assert main(["--config", str(DEFAULT_CONFIG), "--source", "missing.mp4", "--headless"]) == 1
+def test_missing_source_fails_cleanly(default_config, capsys):
+    assert main(["--config", default_config(), "--source", "missing.mp4", "--headless"]) == 1
 
     captured = capsys.readouterr()
-    assert "motion, optical_flow, hands" in captured.out
+    assert "Modules: motion, optical_flow" in captured.out
     assert "Video file not found" in captured.err
 
 

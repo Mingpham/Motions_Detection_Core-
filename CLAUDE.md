@@ -2,7 +2,7 @@
 
 > This file packs the full planning conversation for the **MoveCore** project so Claude Code can continue the work locally. Put it in the repo root as `CLAUDE.md` (Claude Code reads it automatically at the start of each session).
 >
-> Last updated: 2026-11-09
+> Last updated: 2026-11-13
 
 ---
 
@@ -242,14 +242,14 @@ Motions_Detection_Core-/
 │   ├── __init__.py                    # __version__ = "0.1.0"
 │   ├── app.py                         # ✅ run loop: source → preprocess → pipeline → display
 │   ├── cli.py                         # ✅ --config, --source, --loop, --headless, --max-frames, --version
-│   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py, options.py
+│   ├── core/                          # ✅ module.py, events.py, config.py, pipeline.py, options.py, debounce.py (moved from motion/ in M4)
 │   ├── capture/                       # ✅ source.py, camera.py (by index or name), video_file.py, selection.py
 │   ├── preprocess/                    # ✅ transforms.py: crop-and-resize, mirror (color/blur added when needed)
-│   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, debounce, zones · ✅ M3: optical_flow, flow_module
-│   ├── hands/                         # M4–M6: landmarker, features, gesture_rules, gesture_recognizer, classifier, dynamic
+│   ├── motion/                        # ✅ M2: module, settings, frame_diff, background_sub, morphology, zones · ✅ M3: optical_flow, flow_module
+│   ├── hands/                         # 🟡 M4: module, landmarker (both MediaPipe models), landmarks, gesture_rules, settings · M5: features, classifier · M6: dynamic
 │   └── output/                        # ✅ overlay.py (FPS, labels, side_by_side), display.py, event_logger.py · later: recorder
 ├── tests/
-│   ├── conftest.py                    # every test runs in a temp dir; square_frame and make_video fixtures
+│   ├── conftest.py                    # every test runs in a temp dir; default_config, square_frame, make_video, textured_frame fixtures
 │   ├── unit/                          # ✅ core, capture, preprocess, output, app, and one file per motion building block
 │   ├── integration/                   # ✅ test_run_video.py: whole app headless on generated clips, incl. logged events (203 tests total)
 │   └── fixtures/                      # tiny test images/clips
@@ -270,10 +270,11 @@ modules:
      start_frames: 2, stop_frames: 15, zones: {}}   # zone e.g. left_half: [0.0, 0.0, 0.5, 1.0]
   optical_flow: {enabled: true, mode: sparse, max_corners: 200, min_points: 5, min_speed: 40, dense_scale: 0.5, stable_frames: 3}
   hands:
-    enabled: true
-    max_hands: 2
-    min_detection_confidence: 0.5
-    gestures: {rules: true, builtin_recognizer: true, custom_classifier: false, dynamic: false}
+    {enabled: true, max_hands: 2, min_detection_confidence: 0.5, min_tracking_confidence: 0.5,
+     mirrored: true, pinch_ratio: 0.25, min_gesture_score: 0.5, start_frames: 3, stop_frames: 10,
+     stable_frames: 5, landmarker_model: models/hand_landmarker.task,
+     recognizer_model: models/gesture_recognizer.task,
+     gestures: {rules: true, builtin_recognizer: true, custom_classifier: false, dynamic: false}}
 output: {overlay: true, show_fps: true, event_log: logs/events.jsonl, record: false}
 ```
 
@@ -295,8 +296,8 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 | **M0** | Repo setup, environment, CI & security checks | ✅ Done — pushed as `0eb3670`, CI + Security green. Check Dependabot alerts are enabled (Settings → Code security) |
 | **M1** | Capture pipeline (webcam + video) with FPS counter, overlay, quit key | ✅ Done — `5a28a4b`, CI + Security green, live camera checked |
 | **M2** | Frame differencing → background subtraction → morphology/contours → zones & events | ✅ Done — `4a8b030`, CI + Security green |
-| **M3** | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | 🟡 Code, tests and docs done (203 tests). **Pending:** live check by Ming, commit + push, CI green |
-| M4 | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | ⏳ |
+| **M3** | Optical flow (Lucas-Kanade sparse, Farneback dense) & motion direction/speed | ✅ Done — `d62b35e`, live camera checked |
+| **M4** | Hand landmarks, rule-based gestures, built-in Gesture Recognizer | 🟡 Code, tests and docs done (255 tests), live camera checked (sides fixed). **Pending:** commit + push, CI green |
 | M5 | Gesture recorder + custom scikit-learn classifier (+ evaluation) | ⏳ |
 | M6 | Dynamic swipe gestures, benchmarks (FPS/RAM), documentation, paper | ⏳ |
 | v2 / v3 | Body pose / face & expression | 🔮 |
@@ -332,10 +333,21 @@ Verified on the Mac 2026-11-06: both download and run through the Tasks API in V
 - **Speed** (1280×720 textured walker, headless): motion only 110 FPS, + sparse flow 65, + dense flow 47. Sparse stays default to leave budget for M4. Measured speeds matched the true 160 px/s within 4%.
 - **Tests** use a `textured_frame` fixture: LK needs corners, and a plain square has only four.
 
-### M3 remaining
+### M4 summary
+- **Hands module** (`hands/module.py`, registered as `hands` after `optical_flow`): `HandDetector.detect` → per hand `extended_fingers` + `rule_gesture` (world landmarks) + built-in label → events per side.
+- **One model (ADR 0005):** `builtin_recognizer: true` loads only `gesture_recognizer.task` (it contains the landmarker); `false` loads `hand_landmarker.task`. MediaPipe is imported inside `HandDetector` (import takes ~0.9 s; motion-only runs skip it). The model file is checked in `HandsModule.__init__`, so a missing model exits with code 2 and the download hint before the camera opens.
+- **Rules** compare distance ratios on world landmarks (metres): finger extended if tip/PIP distance from the wrist > 1.1 (thumb: from the pinky knuckle). Sample photos: extended 1.19–1.61, curled 0.60–0.99. Labels: `pinch` > `thumb_up`/`thumb_down` > `fingers_<n>`. Built-in labels renamed to snake_case (`thumb_up`, `i_love_you`, ...). Rules agreed with the recognizer on all 5 MediaPipe sample photos.
+- **Handedness:** despite its docs, MediaPipe 1.2.2 names sides correctly on *unmirrored* images (checked on a photo) and swaps them on the mirrored camera view (Ming's live check: right hand shown as Left). `hands.mirrored: true` (default, should match `input.flip`) swaps them back. Hands are keyed by side (no IDs in VIDEO mode); same side twice → the higher-score hand counts for events, both are drawn.
+- **Events:** `hand.enter`, `hand.leave` (duration_ms), `gesture.detected` (hand, gesture, method rules|builtin, score for builtin). Debounced with `Debouncer`/`StableLabel`, now in `core/debounce.py` so `hands` doesn't import `motion`.
+- **`custom_classifier` / `dynamic`** must stay false: `ConfigError` "arrives in M5/M6".
+- **Speed / memory** (1280×720 clip of two hands, headless): motion only 90 FPS / 163 MB, hands only 30.5 FPS / 190 MB, all modules 25.4 FPS / 249 MB. Per frame: ~15 ms with no hand (palm detector every frame), ~27 ms with hands.
+- **Known weak spot:** a thumb hidden behind the hand gets a guessed tip ~0.25 hand sizes from the index tip, so it can flicker to `pinch`. Check live; tune `pinch_ratio`.
+- **Tests:** rules on synthetic hands (`make_hand` in `test_gesture_rules.py`, any rotation/scale); module with a `FakeDetector`; real-model tests skip when `models/` is missing (CI). The `default_config` fixture points hands at the repo's models, or disables hands when they're missing.
+- MediaPipe prints ~5 C++ log lines at startup; env vars (`GLOG_minloglevel`) don't silence them in 1.2.2. Harmless.
+
+### M4 remaining
 ```bash
-uv run movecore   # wave a hand: yellow arrows, a "left/right … px/s" label, flow.direction events
-git add . && git commit -m "feat: M3 optical flow with direction and speed"
+git add -A && git commit -m "feat: M4 hand landmarks and gestures"
 git push
 ```
 
@@ -407,7 +419,9 @@ Pose estimation (33 body keypoints: fall detection, exercise), action recognitio
 - ⚠️ Deactivate conda before using uv.
 - ⚠️ Use MediaPipe **Tasks API** (`mediapipe.tasks.python.vision`), never `mp.solutions`.
 - ⚠️ BGR (OpenCV) vs RGB (MediaPipe).
-- ⚠️ MediaPipe VIDEO mode needs strictly increasing timestamps.
+- ⚠️ MediaPipe VIDEO mode needs strictly increasing timestamps (`HandDetector` nudges repeats forward).
+- ⚠️ MediaPipe names hands as if the image were *not* mirrored (its docs say the opposite): keep `hands.mirrored` equal to `input.flip`, which swaps them back.
+- ⚠️ Ming reviews every change before anything is staged: never `git add`/commit; give an overview and the commands.
 - ⚠️ macOS camera permission for Terminal/VS Code. It belongs to the app that launches the program, so Claude Code's shell can't open the camera; Ming runs live camera checks.
 - ⚠️ Don't select cameras by bare index on this Mac: the iPhone (Continuity Camera) takes index 0 when nearby. Use `input.camera: FaceTime HD`.
 - ⚠️ `cv2.imshow` must run on the main thread on macOS; call `cv2.waitKey(1)` each frame.

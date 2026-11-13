@@ -111,7 +111,7 @@ Coordinates are normalized to `[0, 1]` relative to the image size; `z` is the re
 
 | Approach | How it works | Strength |
 |---|---|---|
-| **Rule-based** | Geometry on landmarks: is a fingertip above its knuckle? Distance between thumb and index tips? | Transparent, no training data |
+| **Rule-based** | Geometry on landmarks: is the fingertip farther from the wrist than its middle joint? Distance between thumb and index tips? | Transparent, no training data |
 | **Built-in recognizer** | MediaPipe's pretrained model for 7 common gestures | Strong baseline |
 | **Custom classifier** | Landmarks are normalized (relative to wrist, scaled by hand size) into a 63-value feature vector, then classified with scikit-learn | Learns your own gestures |
 | **Dynamic gestures** | Track fingertip positions over a sliding time window; analyze velocity and direction | Detects movement like swipes |
@@ -237,7 +237,9 @@ movement-detection-core/
 │   │   ├── pipeline.py                # Main frame loop
 │   │   ├── config.py                  # YAML config loading & validation
 │   │   ├── module.py                  # Base interface for detectors/analyzers
-│   │   └── events.py                  # Event types & event bus
+│   │   ├── events.py                  # Event types & event bus
+│   │   ├── options.py                 # Shared checks for module options
+│   │   └── debounce.py                # Debouncer & StableLabel: flicker → clean events
 │   │
 │   ├── capture/                       # INPUT SOURCES
 │   │   ├── camera.py                  # Webcam capture
@@ -253,12 +255,14 @@ movement-detection-core/
 │   │   └── zones.py                   # Motion zones & enter/leave events
 │   │
 │   ├── hands/                         # MODULE B — HAND GESTURES
-│   │   ├── landmarker.py              # MediaPipe Hand Landmarker wrapper
-│   │   ├── features.py                # Landmark normalization & feature vectors
-│   │   ├── gesture_rules.py           # Rule-based gestures
-│   │   ├── gesture_recognizer.py      # MediaPipe built-in Gesture Recognizer
-│   │   ├── classifier.py              # Custom scikit-learn classifier inference
-│   │   └── dynamic.py                 # Swipe / motion-over-time gestures
+│   │   ├── module.py                  # Hands module: landmarks → gestures → events
+│   │   ├── landmarker.py              # MediaPipe wrapper (Hand Landmarker or Gesture Recognizer)
+│   │   ├── landmarks.py               # The 21 points, bones, and the Hand type
+│   │   ├── gesture_rules.py           # Rule-based gestures (finger count, pinch, thumb up/down)
+│   │   ├── settings.py                # Option checks for modules.hands
+│   │   ├── features.py                # (M5) Landmark normalization & feature vectors
+│   │   ├── classifier.py              # (M5) Custom scikit-learn classifier inference
+│   │   └── dynamic.py                 # (M6) Swipe / motion-over-time gestures
 │   │
 │   ├── output/                        # OUTPUTS
 │   │   ├── overlay.py                 # Draw boxes, landmarks, labels, FPS
@@ -332,8 +336,8 @@ All tools are free and open source.
 | **M0** | Repo setup, environment, CI & security checks | ✅ |
 | **M1** | Capture pipeline (webcam + video) with FPS counter | ✅ |
 | **M2** | Frame differencing → background subtraction → zones & events | ✅ |
-| **M3** | Optical flow & motion direction | 🟡 |
-| **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ⏳ |
+| **M3** | Optical flow & motion direction | ✅ |
+| **M4** | Hand landmarks, rule-based gestures, built-in recognizer | 🟡 |
 | **M5** | Gesture recorder + custom classifier | ⏳ |
 | **M6** | Dynamic swipe gestures, benchmarks, documentation | ⏳ |
 | **v2** | Body pose module | 🔮 |
@@ -343,23 +347,22 @@ All tools are free and open source.
 
 ## 🚀 Getting Started
 
-> Motion detection (M2) and optical flow (M3) work: moving regions get boxes, arrows show direction and speed, and events print in the terminal and go to `logs/events.jsonl`. Hand tracking arrives in M4.
+> Motion detection (M2), optical flow (M3) and hand tracking (M4) work: moving regions get boxes, arrows show direction and speed, hands get a 21-point skeleton with finger count and gesture labels, and events print in the terminal and go to `logs/events.jsonl`.
 
 ### Prerequisites
 
 - macOS on Apple Silicon (native arm64 — do **not** run under Rosetta)
-- [Homebrew](https://brew.sh/)
 - A webcam (built-in is fine)
 
 ### Setup
 
 ```bash
-# 1. Install uv
-brew install uv
+# 1. Install uv (native installer; works on Apple Silicon without Homebrew)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Clone the repository
-git clone https://github.com/<your-username>/movement-detection-core.git
-cd movement-detection-core
+git clone https://github.com/Mingpham/Motions_Detection_Core-.git
+cd Motions_Detection_Core-
 
 # 3. Create the environment and install dependencies
 uv sync
@@ -373,8 +376,12 @@ uv run movecore
 # See what the motion detector sees: the mask appears beside the image
 uv run movecore --show-mask
 
+# Hands only (faster), or motion only
+uv run movecore --config configs/hands_only.yaml
+uv run movecore --config configs/motion_only.yaml
+
 # Or run on a video file
-uv run movecore --config configs/motion_only.yaml --source data/clips/sample.mp4
+uv run movecore --source data/clips/sample.mp4
 ```
 
 ### macOS camera permission

@@ -1,4 +1,4 @@
-from movecore.motion.debounce import Debouncer, StableLabel
+from movecore.core.debounce import Debouncer, StableLabel
 
 
 def run(debouncer, detections):
