@@ -211,8 +211,9 @@ def test_swipe_is_reported(hand):
     swipes = [payload for kind, payload in events if kind == "gesture.swipe"]
     assert len(swipes) == 1
     assert swipes[0]["hand"] == "Right" and swipes[0]["direction"] == "right"
+    assert swipes[0]["fingers"] == ["thumb", "index", "middle", "ring", "pinky"]
     assert swipes[0]["distance"] >= 1.5
-    assert results[-1].data["swipes"] == {"Right": "right"}
+    assert results[-1].data["swipes"] == {"Right": "right (thumb+index+middle+ring+pinky)"}
 
     frame = np.zeros((480, 640, 3), np.uint8)
     module.draw(frame, results[-1])
@@ -223,11 +224,12 @@ def test_holding_still_is_not_a_swipe(hand):
     _, results, events = run([[hand()]] * 6, DYNAMIC)
 
     assert all(kind != "gesture.swipe" for kind, _ in events)
-    assert len(results[-1].data["trails"]["Right"]) > 1
+    assert len(results[-1].data["trails"]["Right"]["index"]) > 1
 
 
-def test_curled_index_finger_moves_the_palm_path_but_does_not_swipe(hand):
-    _, results, events = run(sliding(lambda: hand(fingers="0111"), 6, 0.05), DYNAMIC)
+def test_curled_fingers_move_the_palm_path_but_do_not_swipe(hand):
+    fist = DYNAMIC | {"swipe_fingers": ["index"]}
+    _, results, events = run(sliding(lambda: hand(fingers="0111"), 6, 0.05), fist)
 
     assert all(kind != "gesture.swipe" for kind, _ in events)
     palm = results[-1].data["paths"]["Right"]

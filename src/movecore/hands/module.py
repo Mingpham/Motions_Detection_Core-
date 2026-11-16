@@ -25,8 +25,16 @@ METHODS = ("rules", "builtin", "custom")
 WHITE = (255, 255, 255)
 GREEN = (0, 200, 0)
 YELLOW = (0, 220, 255)
-MAGENTA = (255, 0, 255)
 GRAY = (160, 160, 160)
+# One color per fingertip trail (BGR): thumb red, index magenta, middle cyan, ring orange,
+# pinky green.
+FINGER_COLORS = {
+    "thumb": (0, 0, 255),
+    "index": (255, 0, 255),
+    "middle": (255, 255, 0),
+    "ring": (0, 165, 255),
+    "pinky": (0, 255, 0),
+}
 # How long a swipe's label stays on screen after the swipe.
 SWIPE_LABEL_MS = 600
 
@@ -51,8 +59,9 @@ class HandsModule(Module):
     ``gesture`` and ``method`` ('rules', 'builtin' or 'custom'; the last two add ``score``).
     With ``gestures.dynamic``, also ``gesture.swipe`` with ``hand``, ``direction``,
     ``distance`` and ``speed`` (hand sizes, per second) and ``duration_ms``; ``result.data``
-    then holds ``paths`` (palm path per side, for later uses), ``trails`` (index fingertip
-    path per side, what swipes are judged on) and ``swipes`` (side -> recent direction).
+    and ``fingers`` (every finger that swiped that way); ``result.data`` then holds
+    ``paths`` (palm path per side, for later uses), ``trails`` (side -> finger -> fingertip
+    path, what swipes are judged on) and ``swipes`` (side -> recent "direction (fingers)").
     """
 
     name = "hands"
@@ -82,7 +91,9 @@ class HandsModule(Module):
         self._since = dict.fromkeys(SIDES, 0)
         self._labels = {side: self._new_labels() for side in SIDES}
         self._swipes = {
-            side: SwipeDetector(s.swipe_window_ms, s.swipe_min_distance, s.swipe_cooldown_ms)
+            side: SwipeDetector(
+                s.swipe_window_ms, s.swipe_min_distance, s.swipe_cooldown_ms, s.swipe_fingers
+            )
             for side in SIDES
         }
         self._last_swipe: dict[str, tuple[str, int]] = {}  # side -> (direction, timestamp)
@@ -101,7 +112,7 @@ class HandsModule(Module):
         data: dict[str, Any] = {"hands": readings}
         if self.settings.gestures.dynamic:
             data["paths"] = {side: path.trail for side, path in self._paths.items()}
-            data["trails"] = {side: detector.trail for side, detector in self._swipes.items()}
+            data["trails"] = {side: detector.trails for side, detector in self._swipes.items()}
             data["swipes"] = {
                 side: direction
                 for side, (direction, at) in self._last_swipe.items()
@@ -110,11 +121,11 @@ class HandsModule(Module):
         return ModuleResult(data=data, events=events)
 
     def draw(self, frame: np.ndarray, result: ModuleResult) -> None:
-        for paths, color, thickness in (("paths", GRAY, 1), ("trails", MAGENTA, 3)):
-            for trail in result.data.get(paths, {}).values():
-                points = np.array(trail, dtype=np.int32)
-                if len(points) > 1:
-                    cv2.polylines(frame, [points], False, color, thickness, cv2.LINE_AA)
+        for path in result.data.get("paths", {}).values():
+            _polyline(frame, path, GRAY, 1)
+        for fingers in result.data.get("trails", {}).values():
+            for finger, trail in fingers.items():
+                _polyline(frame, trail, FINGER_COLORS[finger], 3)
         swipes = result.data.get("swipes", {})
         for reading in result.data["hands"]:
             text = _describe(reading)
@@ -173,12 +184,15 @@ class HandsModule(Module):
                 events.append(self._event("gesture.detected", ctx, payload))
         if self.settings.gestures.dynamic:
             height, width = ctx.frame.shape[:2]
-            hand, pointing = reading.hand, reading.fingers[1]  # index finger extended
+            hand = reading.hand
             size = hand_size_px(hand, width, height)
             self._paths[side].add(ctx.timestamp_ms, palm_center(hand, width, height), size)
-            swipe = self._swipes[side].update(hand, pointing, ctx.timestamp_ms, width, height)
+            swipe = self._swipes[side].update(
+                hand, reading.fingers, ctx.timestamp_ms, width, height
+            )
             if swipe is not None:
-                self._last_swipe[side] = (swipe.direction, ctx.timestamp_ms)
+                label = f"{swipe.direction} ({'+'.join(swipe.fingers)})"
+                self._last_swipe[side] = (label, ctx.timestamp_ms)
                 events.append(self._event("gesture.swipe", ctx, _swipe_payload(side, swipe)))
         return events
 
@@ -206,10 +220,17 @@ def draw_hand(frame: np.ndarray, hand: Hand, fingers: tuple[bool, ...], text: st
     draw_label(frame, text, origin)
 
 
+def _polyline(frame: np.ndarray, trail: list[tuple[float, float]], color, thickness: int) -> None:
+    points = np.array(trail, dtype=np.int32)
+    if len(points) > 1:
+        cv2.polylines(frame, [points], False, color, thickness, cv2.LINE_AA)
+
+
 def _swipe_payload(side: str, swipe: Swipe) -> dict[str, Any]:
     return {
         "hand": side,
         "direction": swipe.direction,
+        "fingers": list(swipe.fingers),
         "distance": round(swipe.distance, 1),
         "speed": round(swipe.speed, 1),
         "duration_ms": swipe.duration_ms,

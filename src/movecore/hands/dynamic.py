@@ -4,9 +4,11 @@ Both keep a point's recent positions in a sliding time window (``PathTracker``):
 
 - **Palm path:** where the whole hand has been. Steady, because the palm only moves when the
   hand does. Kept for later uses (drawing in the air, following a hand across zones).
-- **Swipe:** a quick flick of the index fingertip. Reported when, within a short window, the
+- **Swipe:** a quick flick of one or more fingertips. Each finger has its own path, kept
+  only while that finger is extended. A swipe is reported when, within a short window, a
   fingertip travelled far enough, fast, mostly in one direction, along a fairly straight
-  path, with the index finger extended the whole time.
+  path. Fingers moving the same way at that moment are reported together (a whole-hand
+  wave is one swipe with every extended finger, not five).
 
 Distances are in hand sizes rather than pixels, so a small hand far from the camera swipes
 the same as a big one close to it.
@@ -22,7 +24,7 @@ from movecore.hands.landmarks import FINGERS, MIDDLE_MCP, WRIST, Hand
 
 # The palm center: wrist and the four finger knuckles.
 PALM = (0, 5, 9, 13, 17)
-INDEX_TIP = FINGERS["index"][2]
+FINGER_NAMES = tuple(FINGERS)  # thumb, index, middle, ring, pinky
 # The main direction must be at least this many times the other one (2 = within ~27°).
 DOMINANCE = 2.0
 # Distance from start to end, divided by the length of the path walked: 1 = a straight line.
@@ -38,8 +40,9 @@ MIN_SPAN_MS = 60
 @dataclass(frozen=True)
 class Swipe:
     direction: str  # 'left', 'right', 'up' or 'down', as seen on screen
-    distance: float  # hand sizes from start to end
+    distance: float  # hand sizes from start to end, for the finger that moved most
     duration_ms: int
+    fingers: tuple[str, ...] = ()  # every finger that swiped this way, thumb first
 
     @property
     def speed(self) -> float:
@@ -60,8 +63,8 @@ def palm_center(hand: Hand, width: int, height: int) -> tuple[float, float]:
     return float(points[:, 0].mean()), float(points[:, 1].mean())
 
 
-def index_tip(hand: Hand, width: int, height: int) -> tuple[float, float]:
-    x, y = hand.image[INDEX_TIP, :2] * (width, height)
+def fingertip(hand: Hand, finger: str, width: int, height: int) -> tuple[float, float]:
+    x, y = hand.image[FINGERS[finger][2], :2] * (width, height)
     return float(x), float(y)
 
 
@@ -120,74 +123,108 @@ class PathTracker:
         return float(np.hypot(*self.displacement)) / walked if walked > 0 else 0.0
 
 
-class SwipeDetector:
-    """Watches one hand's index fingertip and reports quick flicks.
+def measure_swipe(path: PathTracker, min_distance: float) -> Swipe | None:
+    """The swipe this path makes right now, if it passes the distance, straightness and
+    direction tests."""
+    distance = path.distance()
+    if distance < min_distance:
+        return None
+    if path.straightness() < MIN_STRAIGHTNESS:
+        return None  # a zigzag or a circle, not a swipe
+    dx, dy = path.displacement
+    if abs(dx) >= DOMINANCE * abs(dy):
+        direction = "right" if dx > 0 else "left"
+    elif abs(dy) >= DOMINANCE * abs(dx):
+        direction = "down" if dy > 0 else "up"  # image y grows downward
+    else:
+        return None  # diagonal
+    return Swipe(direction, distance, path.span_ms)
 
-    At most one swipe per ``cooldown_ms``; a second one in the same direction also waits
-    until the fingertip has slowed down. A quick back-and-forth gives two swipes.
+
+class SwipeDetector:
+    """Watches one hand's fingertips and reports quick flicks.
+
+    Each finger in ``fingers`` has its own path. At most one swipe per hand per
+    ``cooldown_ms``; a second one in the same direction also waits until the fingertips have
+    slowed down. A quick back-and-forth gives two swipes.
     """
 
-    def __init__(self, window_ms: int, min_distance: float, cooldown_ms: int) -> None:
+    def __init__(
+        self,
+        window_ms: int,
+        min_distance: float,
+        cooldown_ms: int,
+        fingers: tuple[str, ...] = FINGER_NAMES,
+    ) -> None:
+        self.window_ms = window_ms
         self.min_distance = min_distance
         self.cooldown_ms = cooldown_ms
-        self._path = PathTracker(window_ms)
+        self._paths = {finger: PathTracker(window_ms) for finger in fingers}
         self._quiet_until = -1
         self._last_direction: str | None = None
 
     @property
-    def trail(self) -> list[tuple[float, float]]:
-        """The fingertip positions in the current window, oldest first, for drawing."""
-        return self._path.trail
+    def trails(self) -> dict[str, list[tuple[float, float]]]:
+        """Each watched fingertip's positions in the current window, oldest first."""
+        return {finger: path.trail for finger, path in self._paths.items()}
 
     def reset(self) -> None:
-        """Forget the path, e.g. when the hand leaves: a new hand must not join an old one."""
-        self._path.clear()
+        """Forget the paths, e.g. when the hand leaves: a new hand must not join an old one."""
+        self._clear()
         self._last_direction = None
 
     def update(
-        self, hand: Hand, index_extended: bool, timestamp_ms: int, width: int, height: int
+        self, hand: Hand, extended: tuple[bool, ...], timestamp_ms: int, width: int, height: int
     ) -> Swipe | None:
-        # Only a pointing finger swipes. Without this, opening a fist would look like an "up"
-        # swipe: the fingertip shoots upward as the finger straightens.
-        if not index_extended:
-            self._path.clear()
-            return None
-        self._path.add(
-            timestamp_ms, index_tip(hand, width, height), hand_size_px(hand, width, height)
-        )
+        """Add this frame's fingertips; ``extended`` is per finger, thumb to pinky."""
+        size = hand_size_px(hand, width, height)
+        for finger, path in self._paths.items():
+            # Only an extended finger swipes. Without this, opening a fist would look like an
+            # "up" swipe: the fingertips shoot upward as the fingers straighten.
+            if extended[FINGER_NAMES.index(finger)]:
+                path.add(timestamp_ms, fingertip(hand, finger, width, height), size)
+            else:
+                path.clear()
         if self._slowed_down():
             self._last_direction = None
-        if timestamp_ms < self._quiet_until or len(self._path) < 3:
+        if timestamp_ms < self._quiet_until:
             return None
 
-        swipe = self._measure()
-        if swipe is None or swipe.direction == self._last_direction:
+        candidates = {
+            finger: swipe
+            for finger, path in self._paths.items()
+            if len(path) >= 3 and (swipe := measure_swipe(path, self.min_distance)) is not None
+        }
+        if not candidates:
             return None
+        leader = max(candidates.values(), key=lambda swipe: swipe.distance)
+        if leader.direction == self._last_direction:
+            return None
+        # Fingers flicking the other way at the same moment are left out.
+        fingers = tuple(
+            finger
+            for finger, swipe in sorted(candidates.items(), key=lambda c: FINGER_NAMES.index(c[0]))
+            if swipe.direction == leader.direction
+        )
         # Start fresh, so the end of this swipe isn't counted again as a new one.
-        self._path.clear()
+        self._clear()
         self._quiet_until = timestamp_ms + self.cooldown_ms
-        self._last_direction = swipe.direction
-        return swipe
+        self._last_direction = leader.direction
+        return Swipe(leader.direction, leader.distance, leader.duration_ms, fingers)
+
+    def _clear(self) -> None:
+        for path in self._paths.values():
+            path.clear()
 
     def _slowed_down(self) -> bool:
-        span_ms = self._path.span_ms
-        if span_ms < MIN_SPAN_MS:
-            return False
-        speed = self._path.distance() / span_ms * 1000
-        slowest_swipe = self.min_distance / self._path.window_ms * 1000
-        return speed < REARM_SPEED_SHARE * slowest_swipe
+        """True when the fingertips have been watched long enough and none moves fast.
 
-    def _measure(self) -> Swipe | None:
-        distance = self._path.distance()
-        if distance < self.min_distance:
-            return None
-        if self._path.straightness() < MIN_STRAIGHTNESS:
-            return None  # a zigzag or a circle, not a swipe
-        dx, dy = self._path.displacement
-        if abs(dx) >= DOMINANCE * abs(dy):
-            direction = "right" if dx > 0 else "left"
-        elif abs(dy) >= DOMINANCE * abs(dx):
-            direction = "down" if dy > 0 else "up"  # image y grows downward
-        else:
-            return None  # diagonal
-        return Swipe(direction, distance, self._path.span_ms)
+        Too little history (e.g. right after a swipe cleared the paths) counts as "not yet":
+        otherwise the rest of one long movement would re-arm at once and count again.
+        """
+        slowest_swipe = self.min_distance / self.window_ms * 1000
+        judged = [path for path in self._paths.values() if path.span_ms >= MIN_SPAN_MS]
+        return bool(judged) and all(
+            path.distance() / path.span_ms * 1000 < REARM_SPEED_SHARE * slowest_swipe
+            for path in judged
+        )

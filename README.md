@@ -267,7 +267,7 @@ movement-detection-core/
 │   │   ├── recorder.py                # What to keep while recording a gesture
 │   │   ├── training.py                # scikit-learn training & cross-validation (training only)
 │   │   ├── classifier.py              # Run the trained model with NumPy; .npz, no pickle
-│   │   └── dynamic.py                 # Index-finger swipes (quick flicks) and the palm's path
+│   │   └── dynamic.py                 # Fingertip swipes (any finger, grouped) and the palm's path
 │   │
 │   ├── output/                        # OUTPUTS
 │   │   ├── overlay.py                 # Draw boxes, landmarks, labels, FPS

@@ -8,20 +8,20 @@ Each frame, the hands module adds points to short histories, one per hand. Each 
 
 | | Palm path | Swipe |
 |---|---|---|
-| Point | Palm center: mean of wrist and the 4 knuckles (0, 5, 9, 13, 17) | Index fingertip (8) |
+| Point | Palm center: mean of wrist and the 4 knuckles (0, 5, 9, 13, 17) | Each fingertip (4, 8, 12, 16, 20), one path per finger |
 | Window | `path_window_ms` (1 s) | `swipe_window_ms` (250 ms) |
 | Moves when | The whole hand moves | The hand moves **or** the finger flicks |
-| Used for | Kept as `paths` for later (drawing in the air, following a hand across zones); drawn in gray | `gesture.swipe` events; drawn in magenta |
+| Used for | Kept as `paths` for later (drawing in the air, following a hand across zones); drawn in gray | `gesture.swipe` events; one color per finger |
 
-$$c_t = \frac{1}{5} \sum_{i \in \{0, 5, 9, 13, 17\}} p_i(t) \qquad f_t = p_8(t)$$
+$$c_t = \frac{1}{5} \sum_{i \in \{0, 5, 9, 13, 17\}} p_i(t) \qquad f^{(k)}_t = p_{\text{tip}(k)}(t)$$
 
-**Design history.** The first M6 version detected swipes on the palm path, so the palm had to travel 1.5 hand sizes in 0.5 s. Tried live, it felt like path tracking, not swiping: a swipe is a quick flick led by the fingertip. Swipes now follow the fingertip in a short window; the palm path stays as its own feature.
+**Design history.** The first M6 version detected swipes on the palm path, so the palm had to travel 1.5 hand sizes in 0.5 s. Tried live, it felt like path tracking, not swiping: a swipe is a quick flick led by the fingertip. Swipes now follow the fingertips in a short window; the palm path stays as its own feature. The second live test asked for every finger, not only the index: each fingertip now has its own path.
 
 ## 2. When is a fingertip path a swipe?
 
-Let the window run from $t_0$ to $t_1$, with fingertip displacement $\Delta = f_{t_1} - f_{t_0} = (\Delta x, \Delta y)$ in pixels, and hand size $s$ (median wrist-to-middle-knuckle length in pixels over the window). All five tests must pass:
+For one finger $k$, let the window run from $t_0$ to $t_1$, with fingertip displacement $\Delta = f^{(k)}_{t_1} - f^{(k)}_{t_0} = (\Delta x, \Delta y)$ in pixels, and hand size $s$ (median wrist-to-middle-knuckle length in pixels over the window). All five tests must pass:
 
-1. **The index finger is extended the whole time.** When it isn't, the history is cleared. Without this, opening a fist would read as an "up" swipe: the fingertip shoots upward as the finger straightens.
+1. **The finger is extended the whole time.** When it isn't, its history is cleared. Without this, opening a fist would read as an "up" swipe: the fingertips shoot upward as the fingers straighten.
 
 2. **Far enough, fast**, in hand sizes, so distance from the camera doesn't matter:
    $$\frac{\lVert \Delta \rVert}{s} \ge \text{swipe\_min\_distance} \quad (0.8)$$
@@ -33,21 +33,23 @@ Let the window run from $t_0$ to $t_1$, with fingertip displacement $\Delta = f_
 
 4. **One clear direction**: the larger of $|\Delta x|, |\Delta y|$ must be at least twice the other (within about 27° of an axis). Diagonals are ignored rather than guessed.
 
-5. **Not a repeat**: after a swipe, the history is cleared and nothing is reported for `swipe_cooldown_ms` (400 ms). A second swipe in the **same** direction also waits until the fingertip slows down, below a third of the slowest swipe speed, so one long movement isn't counted twice. Changing direction is allowed right after the cooldown, so a quick back-and-forth gives "right, left".
+**Grouping.** Every finger that passes tests 1–4 in the same frame is a candidate. The one that moved farthest sets the direction; the event lists every finger that went that way (`fingers`). One finger flicking gives `fingers: [middle]`; a whole-hand wave gives one event with all extended fingers, not five events. `swipe_fingers` limits which fingers are watched.
+
+5. **Not a repeat** (per hand, all fingers together): after a swipe, the history is cleared and nothing is reported for `swipe_cooldown_ms` (400 ms). A second swipe in the **same** direction also waits until the fingertips slow down, below a third of the slowest swipe speed, so one long movement isn't counted twice. Changing direction is allowed right after the cooldown, so a quick back-and-forth gives "right, left".
 
 Directions are as seen on screen. With the mirrored camera view (`flip: true`), moving your hand to your right moves it right on screen.
 
-Event: `gesture.swipe` with `hand`, `direction`, `distance` (hand sizes), `speed` (hand sizes per second) and `duration_ms`. On screen, the fingertip's last 250 ms is drawn in magenta, the palm's last second in gray, and the label shows `swipe left` for a moment.
+Event: `gesture.swipe` with `hand`, `direction`, `fingers`, `distance` (hand sizes), `speed` (hand sizes per second) and `duration_ms`. On screen, each fingertip's last 250 ms is drawn in its own color (thumb red, index magenta, middle cyan, ring orange, pinky green), the palm's last second in gray, and the label shows e.g. `swipe left (index+middle)` for a moment.
 
-**Measured** on a clip of a pointing hand with four flicks (about 1.3 hand sizes in 165 ms) separated by pauses: exactly four swipes, in the right directions, none during the pauses.
+**Measured:** a clip of a pointing hand with four flicks (about 1.3 hand sizes in 165 ms) separated by pauses gave exactly four swipes, in the right directions, each with `fingers: [index]`, none during the pauses. A clip of two open hands waving gave one event per wave per hand with `[index, middle, ring, pinky]` (the thumbs were hidden behind the hands).
 
-**Note:** a whole hand waved fast also moves the fingertip fast, so it counts as a swipe too. If only finger flicks should count, the fingertip could be measured *relative to the palm*; that's a small change to make if live use asks for it.
+**Note:** a whole hand waved fast also moves the fingertips fast, so it counts as a swipe (with all extended fingers listed). If only finger flicks should count, fingertips could be measured *relative to the palm*; a small change if live use asks for it.
 
 ### How this compares with optical flow (M3)
 
 | | Optical flow (M3) | Swipes (M6) |
 |---|---|---|
-| What moves | Pixels: anything in the image | One tracked point on a recognized hand (the index fingertip) |
+| What moves | Pixels: anything in the image | Tracked points on a recognized hand (each fingertip) |
 | Units | Pixels per second | Hand sizes per second |
 | Knows it's a hand | No | Yes (from the M4 model) |
 | Typical use | "Something moved left" | "Your right hand swiped left" |

@@ -4,26 +4,30 @@ import pytest
 from movecore.hands.dynamic import (
     PathTracker,
     SwipeDetector,
+    fingertip,
     hand_size_px,
-    index_tip,
     palm_center,
 )
 from movecore.hands.landmarks import Hand
 
 WIDTH, HEIGHT = 640, 480
 STEP_MS = 33  # ~30 FPS
+INDEX_ONLY = (False, True, False, False, False)
+TIPS = {"thumb": 4, "index": 8, "middle": 12, "ring": 16, "pinky": 20}
 
 
-def hand_at(x, y, size=0.1):
-    """A hand whose index fingertip is at (x, y), as fractions of the frame, ``size`` tall.
+def hand_at(x, y, size=0.1, tips=None):
+    """A hand whose fingertips are at (x, y), as fractions of the frame, ``size`` tall.
 
-    Hand size in pixels (wrist to middle knuckle) is 0.75 × size × height: 36 px by default.
+    ``tips`` moves single fingertips elsewhere: {"middle": (x, y)}. Hand size in pixels
+    (wrist to middle knuckle) is 0.75 × size × height: 36 px by default.
     """
     image = np.zeros((21, 3))
-    image[:, 0], image[:, 1] = x, y + size * 0.6  # palm below the fingertip
+    image[:, 0], image[:, 1] = x, y + size * 0.6  # palm below the fingertips
     image[0, 1] = y + size * 1.2  # wrist
     image[[5, 9, 13, 17], 1] = y + size * 0.45  # knuckles
-    image[8] = (x, y, 0)  # index fingertip
+    for finger, tip in TIPS.items():
+        image[tip, :2] = (tips or {}).get(finger, (x, y))
     return Hand("Right", 0.9, image, np.zeros((21, 3)))
 
 
@@ -31,10 +35,10 @@ def detector(window_ms=250, min_distance=0.8, cooldown_ms=400):
     return SwipeDetector(window_ms, min_distance, cooldown_ms)
 
 
-def move(swipes, path, start_ms=0, pointing=True):
+def move(swipes, path, start_ms=0, extended=INDEX_ONLY):
     """Feed fingertip positions one frame apart; return the swipes reported."""
     results = [
-        swipes.update(hand_at(x, y), pointing, start_ms + i * STEP_MS, WIDTH, HEIGHT)
+        swipes.update(hand_at(x, y), extended, start_ms + i * STEP_MS, WIDTH, HEIGHT)
         for i, (x, y) in enumerate(path)
     ]
     return [swipe for swipe in results if swipe is not None]
@@ -48,7 +52,7 @@ def line(start, end, frames=6):
 def test_points_and_size_in_pixels():
     hand = hand_at(0.5, 0.5)
 
-    assert index_tip(hand, WIDTH, HEIGHT) == pytest.approx((320, 240))
+    assert fingertip(hand, "index", WIDTH, HEIGHT) == pytest.approx((320, 240))
     assert palm_center(hand, WIDTH, HEIGHT)[1] > 240  # the palm is below the fingertip
     assert hand_size_px(hand, WIDTH, HEIGHT) == pytest.approx(0.075 * HEIGHT)  # 36 px
 
@@ -67,6 +71,7 @@ def test_a_quick_flick_in_each_direction(start, end, direction):
     (swipe,) = move(detector(), line(start, end))
 
     assert swipe.direction == direction
+    assert swipe.fingers == ("index",)
     assert swipe.distance >= 0.8
     assert swipe.speed > 3
 
@@ -81,9 +86,51 @@ def test_slow_moves_are_not_swipes():
     assert move(detector(), line((0.4, 0.5), (0.5, 0.5), frames=30)) == []
 
 
-def test_only_a_pointing_finger_swipes():
-    # A curled index finger moving fast is not a swipe (e.g. a fist being waved).
-    assert move(detector(), line((0.4, 0.5), (0.5, 0.5)), pointing=False) == []
+def test_only_extended_fingers_swipe():
+    # Curled fingers moving fast are not a swipe (e.g. a fist being waved).
+    assert move(detector(), line((0.4, 0.5), (0.5, 0.5)), extended=(False,) * 5) == []
+
+
+def test_each_finger_can_swipe_on_its_own():
+    # Only the middle fingertip flicks; the others stay where they are.
+    swipes = detector()
+    results = []
+    for i, x in enumerate(np.linspace(0.4, 0.5, 6)):
+        hand = hand_at(0.4, 0.5, tips={"middle": (x, 0.5)})
+        results.append(swipes.update(hand, (True,) * 5, i * STEP_MS, WIDTH, HEIGHT))
+
+    (swipe,) = [s for s in results if s]
+    assert swipe.fingers == ("middle",)
+    assert swipe.direction == "right"
+
+
+def test_fingers_moving_together_are_one_swipe():
+    # A whole-hand wave with three fingers out: one event naming all three.
+    (swipe,) = move(
+        detector(), line((0.4, 0.5), (0.5, 0.5)), extended=(False, True, True, True, False)
+    )
+    assert swipe.fingers == ("index", "middle", "ring")
+
+
+def test_a_finger_going_the_other_way_is_left_out():
+    swipes = detector()
+    results = []
+    for i, (a, b) in enumerate(
+        zip(np.linspace(0.4, 0.52, 6), np.linspace(0.5, 0.45, 6), strict=True)
+    ):
+        hand = hand_at(a, 0.5, tips={"pinky": (b, 0.5)})
+        results.append(
+            swipes.update(hand, (False, True, False, False, True), i * STEP_MS, WIDTH, HEIGHT)
+        )
+
+    (swipe,) = [s for s in results if s]
+    assert swipe.direction == "right" and swipe.fingers == ("index",)
+
+
+def test_unwatched_fingers_are_ignored():
+    swipes = SwipeDetector(250, 0.8, 400, fingers=("thumb",))
+    assert move(swipes, line((0.4, 0.5), (0.5, 0.5)), extended=(False,) * 4 + (True,)) == []
+    assert set(swipes.trails) == {"thumb"}
 
 
 def test_opening_a_fist_is_not_an_up_swipe():
@@ -92,7 +139,13 @@ def test_opening_a_fist_is_not_an_up_swipe():
     swipes = detector()
     path = line((0.5, 0.6), (0.5, 0.45))
     results = [
-        swipes.update(hand_at(x, y), i == len(path) - 1, i * STEP_MS, WIDTH, HEIGHT)
+        swipes.update(
+            hand_at(x, y),
+            INDEX_ONLY if i == len(path) - 1 else (False,) * 5,
+            i * STEP_MS,
+            WIDTH,
+            HEIGHT,
+        )
         for i, (x, y) in enumerate(path)
     ]
     assert not any(results)
@@ -113,7 +166,7 @@ def test_distance_is_in_hand_sizes():
         swipes = detector()
         xs = np.linspace(0.4, 0.5, 6)
         return [
-            swipes.update(hand_at(x, 0.5, size), True, i * STEP_MS, WIDTH, HEIGHT)
+            swipes.update(hand_at(x, 0.5, size), INDEX_ONLY, i * STEP_MS, WIDTH, HEIGHT)
             for i, x in enumerate(xs)
         ]
 
@@ -141,7 +194,7 @@ def test_reset_forgets_the_path():
     move(swipes, line((0.4, 0.5), (0.43, 0.5), frames=3))
     swipes.reset()
 
-    assert swipes.trail == []
+    assert swipes.trails["index"] == []
 
 
 def test_path_tracker_keeps_only_the_window():

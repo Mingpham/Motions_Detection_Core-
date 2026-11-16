@@ -40,14 +40,14 @@ Sparse vs dense, forward-backward check, median velocity, direction by dominant 
 - One MediaPipe model for landmarks and built-in gestures. → ADR 0005
 - Handedness under mirroring: documented behaviour vs measured behaviour. → `04` §5
 - Custom classifier: features, session-grouped cross-validation, NumPy inference from `.npz`. → `05`, ADR 0006
-- Swipes: index fingertip in a 250 ms window, five tests, the re-arm rule; why the first palm-based version felt like path tracking. Palm path kept as a separate feature. → `06`
+- Swipes: one path per fingertip in a 250 ms window, five tests, grouping fingers that move together, the re-arm rule; why the first palm-based version felt like path tracking. Palm path kept as a separate feature. → `06`
 
 ## 5. Evaluation
 
 - **Accuracy**
   - Rules vs built-in recognizer on the MediaPipe sample photos (5/5 agreement).
   - Custom classifier: cross-validated by session on Ming's own recordings. *To do: record ≥ 4 gestures × 2 sessions; report the confusion matrix.*
-- **Swipes:** 4/4 flicks detected in the right direction on a synthetic clip, none during pauses. *To do: live test, N swipes per direction, count misses and false triggers.*
+- **Swipes:** 4/4 flicks detected in the right direction (finger: index) on a synthetic clip, none during pauses; open-hand waves reported once with all extended fingers. *To do: live test, N swipes per direction, count misses and false triggers.*
 - **Speed and memory:** benchmark table per config, per-module cost breakdown, effect of machine load and thermal throttling. → `06` §3. *To do: rerun on an idle machine for the final numbers.*
 - **Optical flow:** measured vs true speed on synthetic motion (within 4%). → M3 notes
 

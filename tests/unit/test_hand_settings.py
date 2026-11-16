@@ -41,6 +41,9 @@ def test_plain_landmarker_when_the_recognizer_is_off():
         ({"swipe_min_distance": -1}, "swipe_min_distance"),
         ({"swipe_cooldown_ms": 0.5}, "swipe_cooldown_ms"),
         ({"path_window_ms": 20000}, "path_window_ms"),
+        ({"swipe_fingers": []}, "swipe_fingers"),
+        ({"swipe_fingers": ["index", "toe"]}, "swipe_fingers"),
+        ({"swipe_fingers": "index"}, "swipe_fingers"),
     ],
 )
 def test_bad_options_are_rejected(options, message):

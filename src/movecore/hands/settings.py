@@ -7,8 +7,10 @@ from typing import Any
 
 from movecore.core.config import ConfigError
 from movecore.core.options import OptionChecks
+from movecore.hands.landmarks import FINGERS
 
 CHECKS = OptionChecks("modules.hands")
+FINGER_NAMES = tuple(FINGERS)
 GESTURE_CHECKS = OptionChecks("modules.hands.gestures")
 DOWNLOAD_HINT = "download the models with: uv run python scripts/download_models.py"
 MODEL_SUFFIXES = {
@@ -56,6 +58,7 @@ class HandSettings:
     swipe_min_distance: float = 0.8
     swipe_cooldown_ms: int = 400
     path_window_ms: int = 1000
+    swipe_fingers: tuple[str, ...] = ("thumb", "index", "middle", "ring", "pinky")
     landmarker_model: str = "models/hand_landmarker.task"
     recognizer_model: str = "models/gesture_recognizer.task"
     classifier_model: str = "models/gesture_clf.npz"
@@ -66,6 +69,12 @@ class HandSettings:
         CHECKS.reject_unknown(options, {f.name for f in fields(cls)} | {"enabled"})
         values = {key: value for key, value in options.items() if key != "enabled"}
         values["gestures"] = GestureSettings.from_options(values.get("gestures", {}))
+        fingers = values.get("swipe_fingers", cls.swipe_fingers)
+        if not isinstance(fingers, list | tuple) or not fingers:
+            raise CHECKS.error("swipe_fingers", "a list of finger names", fingers)
+        for finger in fingers:
+            CHECKS.choice("swipe_fingers", finger, FINGER_NAMES)
+        values["swipe_fingers"] = tuple(dict.fromkeys(fingers))  # drop repeats, keep order
         settings = cls(**values)
         # Events are kept per hand, and a hand is known by its side, so two at most.
         CHECKS.integer("max_hands", settings.max_hands, 1, 2)

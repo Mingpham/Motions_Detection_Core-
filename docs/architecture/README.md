@@ -38,7 +38,7 @@ Each frame:
 |---|---|---|---|---|
 | `motion` | `motion/module.py` | frame | `mask`, `boxes`, `moving`, `active_zones` | `motion.start`, `motion.stop`, `zone.enter`, `zone.leave` |
 | `optical_flow` | `motion/flow_module.py` | frame, motion's `mask`/`boxes` | `velocity`, `speed`, `direction`, `angle_deg`, per-box velocity | `flow.direction` |
-| `hands` | `hands/module.py` | frame | `hands` (`HandReading` per hand), `paths` (palm), `trails` (index fingertip), `swipes` | `hand.enter`, `hand.leave`, `gesture.detected`, `gesture.swipe` |
+| `hands` | `hands/module.py` | frame | `hands` (`HandReading` per hand), `paths` (palm), `trails` (per fingertip), `swipes` | `hand.enter`, `hand.leave`, `gesture.detected`, `gesture.swipe` |
 
 Adding a module: subclass `core.module.Module` (`setup`, `process`, `close`, optional `draw`), take the config section as the only constructor argument, validate it with `core.options.OptionChecks`, and add one line to `app.MODULES`. Nothing else in the core changes.
 
@@ -51,7 +51,7 @@ flowchart LR
     HD --> R["gesture_rules.py<br/>distance ratios"]
     HD --> B["built-in label<br/>(from the recognizer)"]
     HD --> C["features.py → classifier.py<br/>NumPy, .npz (ADR 0006)"]
-    HD --> S["dynamic.py<br/>fingertip flick → swipe<br/>palm path (kept for later)"]
+    HD --> S["dynamic.py<br/>fingertip flicks → swipe (+ which fingers)<br/>palm path (kept for later)"]
     R & B & C --> SL["StableLabel per side & method"] --> E1["gesture.detected"]
     S --> E2["gesture.swipe"]
     HD --> P["Debouncer per side"] --> E3["hand.enter / hand.leave"]
