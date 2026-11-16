@@ -23,7 +23,7 @@ def write_config(tmp_path: Path, text: str) -> Path:
 @pytest.mark.parametrize(
     ("filename", "expected"),
     [
-        ("default.yaml", ["motion", "optical_flow", "hands"]),
+        ("default.yaml", ["motion", "hands"]),  # flow off by default since M6
         ("motion_only.yaml", ["motion", "optical_flow"]),
         ("hands_only.yaml", ["hands"]),
     ],

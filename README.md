@@ -344,7 +344,7 @@ All tools are free and open source.
 | **M3** | Optical flow & motion direction | ✅ |
 | **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ✅ |
 | **M5** | Gesture recorder + custom classifier | ✅ |
-| **M6** | Dynamic swipe gestures, benchmarks, documentation | 🟡 |
+| **M6** | Dynamic swipe gestures, benchmarks, documentation | ✅ |
 | **v2** | Body pose module | 🔮 |
 | **v3** | Face landmarks & expression module | 🔮 |
 

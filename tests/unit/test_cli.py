@@ -16,7 +16,7 @@ def test_missing_source_fails_cleanly(default_config, capsys):
     assert main(["--config", default_config(), "--source", "missing.mp4", "--headless"]) == 1
 
     captured = capsys.readouterr()
-    assert "Modules: motion, optical_flow" in captured.out
+    assert "Modules: motion" in captured.out
     assert "Video file not found" in captured.err
 
 

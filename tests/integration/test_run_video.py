@@ -25,7 +25,8 @@ def quick_motion(config):
     config["modules"]["motion"] |= {"method": "diff", "warmup_frames": 0, "stop_frames": 3}
     config["modules"]["motion"]["zones"] = {"left": [0, 0, 0.5, 1]}
     # A plain white square has only 4 corners to follow.
-    config["modules"]["optical_flow"] |= {"min_points": 2, "stable_frames": 2}
+    # On here whatever the default config says, since this test checks flow events too.
+    config["modules"]["optical_flow"] |= {"enabled": True, "min_points": 2, "stable_frames": 2}
 
 
 def test_headless_run_processes_every_frame(make_video, default_config, capsys):
