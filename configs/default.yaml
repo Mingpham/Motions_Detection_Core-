@@ -47,6 +47,10 @@ modules:
     start_frames: 3               # frames a hand must be seen before hand.enter
     stop_frames: 10               # frames it must be missing before hand.leave
     stable_frames: 5              # frames a gesture must hold before gesture.detected
+    swipe_window_ms: 250          # dynamic: a swipe is a flick of the index fingertip this quick
+    swipe_min_distance: 0.8       # dynamic: fingertip travel needed, in hand sizes (wrist to middle knuckle)
+    swipe_cooldown_ms: 400        # dynamic: quiet time after a swipe, so one swipe isn't two
+    path_window_ms: 1000          # dynamic: how much of the palm's path is kept (drawn in gray)
     landmarker_model: models/hand_landmarker.task      # used when builtin_recognizer is off
     recognizer_model: models/gesture_recognizer.task   # includes the landmarker; used when on
     classifier_model: models/gesture_clf.npz           # made by scripts/train_gesture_classifier.py
@@ -54,7 +58,7 @@ modules:
       rules: true                 # finger count, pinch, thumb up/down from geometry
       builtin_recognizer: true    # MediaPipe's 7 trained gestures
       custom_classifier: false    # your own gestures; record and train first (docs/fundamentals/05)
-      dynamic: false              # M6
+      dynamic: true               # index-finger swipes left/right/up/down, and the palm's path
 
 output:
   overlay: true

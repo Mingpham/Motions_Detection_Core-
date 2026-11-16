@@ -192,6 +192,55 @@ def test_missing_classifier_says_how_to_train():
         HandsModule(CUSTOM)
 
 
+DYNAMIC = FAST | {"gestures": {"rules": False, "builtin_recognizer": False, "dynamic": True}}
+
+
+def sliding(hand, frames, step):
+    """The same hand moved ``step`` of the frame width to the right each frame (100 ms)."""
+    hands = []
+    for i in range(frames):
+        moved = hand()
+        moved.image[:, 0] += step * i
+        hands.append([moved])
+    return hands
+
+
+def test_swipe_is_reported(hand):
+    module, results, events = run(sliding(hand, 6, 0.05), DYNAMIC)
+
+    swipes = [payload for kind, payload in events if kind == "gesture.swipe"]
+    assert len(swipes) == 1
+    assert swipes[0]["hand"] == "Right" and swipes[0]["direction"] == "right"
+    assert swipes[0]["distance"] >= 1.5
+    assert results[-1].data["swipes"] == {"Right": "right"}
+
+    frame = np.zeros((480, 640, 3), np.uint8)
+    module.draw(frame, results[-1])
+    assert frame.any()
+
+
+def test_holding_still_is_not_a_swipe(hand):
+    _, results, events = run([[hand()]] * 6, DYNAMIC)
+
+    assert all(kind != "gesture.swipe" for kind, _ in events)
+    assert len(results[-1].data["trails"]["Right"]) > 1
+
+
+def test_curled_index_finger_moves_the_palm_path_but_does_not_swipe(hand):
+    _, results, events = run(sliding(lambda: hand(fingers="0111"), 6, 0.05), DYNAMIC)
+
+    assert all(kind != "gesture.swipe" for kind, _ in events)
+    palm = results[-1].data["paths"]["Right"]
+    assert len(palm) > 2 and palm[-1][0] > palm[0][0]  # the palm moved right
+
+
+def test_no_swipes_unless_dynamic_is_on(hand):
+    _, results, events = run(sliding(hand, 6, 0.05))
+
+    assert all(kind != "gesture.swipe" for kind, _ in events)
+    assert "trails" not in results[-1].data
+
+
 def test_draw_marks_the_hand(hand):
     module, results, _ = run([[hand(gesture="open_palm")]])
     frame = np.zeros((480, 640, 3), np.uint8)

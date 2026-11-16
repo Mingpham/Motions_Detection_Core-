@@ -37,7 +37,10 @@ def test_plain_landmarker_when_the_recognizer_is_off():
         ({"gestures": {"rules": 1}}, "modules.hands.gestures.rules"),
         ({"classifier_model": "models/gesture_clf.joblib"}, ".npz model file"),
         ({"min_classifier_score": 0}, "min_classifier_score"),
-        ({"gestures": {"dynamic": True}}, "arrives in M6"),
+        ({"swipe_window_ms": 50}, "swipe_window_ms"),
+        ({"swipe_min_distance": -1}, "swipe_min_distance"),
+        ({"swipe_cooldown_ms": 0.5}, "swipe_cooldown_ms"),
+        ({"path_window_ms": 20000}, "path_window_ms"),
     ],
 )
 def test_bad_options_are_rejected(options, message):

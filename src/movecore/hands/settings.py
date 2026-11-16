@@ -10,8 +10,6 @@ from movecore.core.options import OptionChecks
 
 CHECKS = OptionChecks("modules.hands")
 GESTURE_CHECKS = OptionChecks("modules.hands.gestures")
-# Gesture methods that later milestones add; until then they must stay off.
-NOT_BUILT_YET = {"dynamic": "M6"}
 DOWNLOAD_HINT = "download the models with: uv run python scripts/download_models.py"
 MODEL_SUFFIXES = {
     "landmarker_model": ".task",
@@ -39,11 +37,6 @@ class GestureSettings:
         settings = cls(**options)
         for f in fields(cls):
             GESTURE_CHECKS.boolean(f.name, getattr(settings, f.name))
-        for name, milestone in NOT_BUILT_YET.items():
-            if getattr(settings, name):
-                raise ConfigError(
-                    f"'modules.hands.gestures.{name}' arrives in {milestone}; set it to false"
-                )
         return settings
 
 
@@ -59,6 +52,10 @@ class HandSettings:
     start_frames: int = 3
     stop_frames: int = 10
     stable_frames: int = 5
+    swipe_window_ms: int = 250
+    swipe_min_distance: float = 0.8
+    swipe_cooldown_ms: int = 400
+    path_window_ms: int = 1000
     landmarker_model: str = "models/hand_landmarker.task"
     recognizer_model: str = "models/gesture_recognizer.task"
     classifier_model: str = "models/gesture_clf.npz"
@@ -81,6 +78,10 @@ class HandSettings:
         CHECKS.integer("start_frames", settings.start_frames, 1)
         CHECKS.integer("stop_frames", settings.stop_frames, 1)
         CHECKS.integer("stable_frames", settings.stable_frames, 1)
+        CHECKS.integer("swipe_window_ms", settings.swipe_window_ms, 100, 3000)
+        CHECKS.number("swipe_min_distance", settings.swipe_min_distance)
+        CHECKS.integer("swipe_cooldown_ms", settings.swipe_cooldown_ms, 0)
+        CHECKS.integer("path_window_ms", settings.path_window_ms, 100, 10000)
         for name, suffix in MODEL_SUFFIXES.items():
             value = getattr(settings, name)
             if not (isinstance(value, str) and value.endswith(suffix)):

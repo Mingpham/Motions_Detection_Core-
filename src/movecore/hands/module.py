@@ -12,6 +12,7 @@ from movecore.core.debounce import Debouncer, StableLabel
 from movecore.core.events import Event
 from movecore.core.module import FrameContext, Module, ModuleResult
 from movecore.hands.classifier import ClassifierError, GestureClassifier
+from movecore.hands.dynamic import PathTracker, Swipe, SwipeDetector, hand_size_px, palm_center
 from movecore.hands.features import hand_features
 from movecore.hands.gesture_rules import extended_fingers, rule_gesture
 from movecore.hands.landmarker import HandDetector
@@ -24,6 +25,10 @@ METHODS = ("rules", "builtin", "custom")
 WHITE = (255, 255, 255)
 GREEN = (0, 200, 0)
 YELLOW = (0, 220, 255)
+MAGENTA = (255, 0, 255)
+GRAY = (160, 160, 160)
+# How long a swipe's label stays on screen after the swipe.
+SWIPE_LABEL_MS = 600
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,10 @@ class HandsModule(Module):
     ``result.data["hands"]`` is a list of ``HandReading``. Events: ``hand.enter`` and
     ``hand.leave`` (with ``duration_ms``) per side, and ``gesture.detected`` with ``hand``,
     ``gesture`` and ``method`` ('rules', 'builtin' or 'custom'; the last two add ``score``).
+    With ``gestures.dynamic``, also ``gesture.swipe`` with ``hand``, ``direction``,
+    ``distance`` and ``speed`` (hand sizes, per second) and ``duration_ms``; ``result.data``
+    then holds ``paths`` (palm path per side, for later uses), ``trails`` (index fingertip
+    path per side, what swipes are judged on) and ``swipes`` (side -> recent direction).
     """
 
     name = "hands"
@@ -72,6 +81,12 @@ class HandsModule(Module):
         self._present = {side: Debouncer(s.start_frames, s.stop_frames) for side in SIDES}
         self._since = dict.fromkeys(SIDES, 0)
         self._labels = {side: self._new_labels() for side in SIDES}
+        self._swipes = {
+            side: SwipeDetector(s.swipe_window_ms, s.swipe_min_distance, s.swipe_cooldown_ms)
+            for side in SIDES
+        }
+        self._last_swipe: dict[str, tuple[str, int]] = {}  # side -> (direction, timestamp)
+        self._paths = {side: PathTracker(s.path_window_ms) for side in SIDES}
 
     def close(self) -> None:
         self._detector.close()
@@ -83,11 +98,29 @@ class HandsModule(Module):
         events = []
         for side in SIDES:
             events += self._update_side(side, by_side.get(side), ctx)
-        return ModuleResult(data={"hands": readings}, events=events)
+        data: dict[str, Any] = {"hands": readings}
+        if self.settings.gestures.dynamic:
+            data["paths"] = {side: path.trail for side, path in self._paths.items()}
+            data["trails"] = {side: detector.trail for side, detector in self._swipes.items()}
+            data["swipes"] = {
+                side: direction
+                for side, (direction, at) in self._last_swipe.items()
+                if ctx.timestamp_ms - at <= SWIPE_LABEL_MS
+            }
+        return ModuleResult(data=data, events=events)
 
     def draw(self, frame: np.ndarray, result: ModuleResult) -> None:
+        for paths, color, thickness in (("paths", GRAY, 1), ("trails", MAGENTA, 3)):
+            for trail in result.data.get(paths, {}).values():
+                points = np.array(trail, dtype=np.int32)
+                if len(points) > 1:
+                    cv2.polylines(frame, [points], False, color, thickness, cv2.LINE_AA)
+        swipes = result.data.get("swipes", {})
         for reading in result.data["hands"]:
-            draw_hand(frame, reading.hand, reading.fingers, _describe(reading))
+            text = _describe(reading)
+            if reading.hand.handedness in swipes:
+                text += f" | swipe {swipes[reading.hand.handedness]}"
+            draw_hand(frame, reading.hand, reading.fingers, text)
 
     def _read(self, hand: Hand) -> HandReading:
         s = self.settings
@@ -120,6 +153,8 @@ class HandsModule(Module):
             events.append(self._event("hand.leave", ctx, {"hand": side, "duration_ms": duration}))
             # Forget the last gesture, so showing it again after coming back is reported.
             self._labels[side] = self._new_labels()
+            self._swipes[side].reset()
+            self._paths[side].clear()
 
         # A hand missing for a frame or two keeps its gesture rather than flickering to None.
         if reading is None or not self._present[side].active:
@@ -136,6 +171,15 @@ class HandsModule(Module):
                 if score is not None:
                     payload["score"] = round(score, 2)
                 events.append(self._event("gesture.detected", ctx, payload))
+        if self.settings.gestures.dynamic:
+            height, width = ctx.frame.shape[:2]
+            hand, pointing = reading.hand, reading.fingers[1]  # index finger extended
+            size = hand_size_px(hand, width, height)
+            self._paths[side].add(ctx.timestamp_ms, palm_center(hand, width, height), size)
+            swipe = self._swipes[side].update(hand, pointing, ctx.timestamp_ms, width, height)
+            if swipe is not None:
+                self._last_swipe[side] = (swipe.direction, ctx.timestamp_ms)
+                events.append(self._event("gesture.swipe", ctx, _swipe_payload(side, swipe)))
         return events
 
     def _new_labels(self) -> dict[str, StableLabel]:
@@ -160,6 +204,16 @@ def draw_hand(frame: np.ndarray, hand: Hand, fingers: tuple[bool, ...], text: st
     x, y = points[WRIST]
     origin = (min(max(x - 40, 6), width - 160), min(max(y + 30, 20), height - 10))
     draw_label(frame, text, origin)
+
+
+def _swipe_payload(side: str, swipe: Swipe) -> dict[str, Any]:
+    return {
+        "hand": side,
+        "direction": swipe.direction,
+        "distance": round(swipe.distance, 1),
+        "speed": round(swipe.speed, 1),
+        "duration_ms": swipe.duration_ms,
+    }
 
 
 def _score(reading: HandReading) -> float:

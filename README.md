@@ -124,6 +124,8 @@ Coordinates are normalized to `[0, 1]` relative to the image size; `z` is the re
 
 ### Processing Pipeline
 
+The plan below; [docs/architecture](docs/architecture/README.md) shows the system as built.
+
 ```mermaid
 flowchart LR
     subgraph IN["Input"]
@@ -265,7 +267,7 @@ movement-detection-core/
 │   │   ├── recorder.py                # What to keep while recording a gesture
 │   │   ├── training.py                # scikit-learn training & cross-validation (training only)
 │   │   ├── classifier.py              # Run the trained model with NumPy; .npz, no pickle
-│   │   └── dynamic.py                 # (M6) Swipe / motion-over-time gestures
+│   │   └── dynamic.py                 # Index-finger swipes (quick flicks) and the palm's path
 │   │
 │   ├── output/                        # OUTPUTS
 │   │   ├── overlay.py                 # Draw boxes, landmarks, labels, FPS
@@ -341,8 +343,8 @@ All tools are free and open source.
 | **M2** | Frame differencing → background subtraction → zones & events | ✅ |
 | **M3** | Optical flow & motion direction | ✅ |
 | **M4** | Hand landmarks, rule-based gestures, built-in recognizer | ✅ |
-| **M5** | Gesture recorder + custom classifier | 🟡 |
-| **M6** | Dynamic swipe gestures, benchmarks, documentation | ⏳ |
+| **M5** | Gesture recorder + custom classifier | ✅ |
+| **M6** | Dynamic swipe gestures, benchmarks, documentation | 🟡 |
 | **v2** | Body pose module | 🔮 |
 | **v3** | Face landmarks & expression module | 🔮 |
 
@@ -385,6 +387,9 @@ uv run movecore --config configs/motion_only.yaml
 
 # Or run on a video file
 uv run movecore --source data/clips/sample.mp4
+
+# Check the performance targets (>= 20 FPS, < 1.5 GB) on a clip with hands in it
+uv run python scripts/benchmark.py --source data/clips/hands.mp4
 
 # Teach it your own gestures (see docs/fundamentals/05-custom-gestures.md)
 uv run python scripts/record_gestures.py rock      # SPACE to record, q to quit; repeat per gesture
