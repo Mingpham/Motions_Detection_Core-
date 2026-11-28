@@ -6,3 +6,4 @@
 | [architecture/](architecture/) | System diagrams and data flow |
 | [decisions/](decisions/) | Architecture Decision Records (ADRs) |
 | [paper/](paper/) | Project paper |
+| [my-fundamentals.md](my-fundamentals.md) | My own notes on the fundamentals, in my words |
